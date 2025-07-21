@@ -1,0 +1,40 @@
+[package]
+name = "synthesis"
+version = "0.1.0"
+edition = "2021"
+authors = ["Synthesis Team"]
+description = "A universal creative programming language for artists and musicians"
+license = "MIT OR Apache-2.0"
+
+[[bin]]
+name = "synthesis"
+path = "src/main.rs"
+
+[lib]
+name = "synthesis"
+path = "src/lib.rs"
+
+[dependencies]
+# Parser
+nom = "7.1"
+
+# Graphics
+wgpu = "0.19"
+winit = "0.29"
+
+# Audio
+cpal = "0.15"
+
+# GUI
+egui = "0.25"
+eframe = "0.25"
+
+# Utilities
+anyhow = "1.0"
+thiserror = "1.0"
+tokio = { version = "1.0", features = ["full"] }
+num-complex = "0.4"
+rand = "0.8"
+
+[dev-dependencies]
+criterion = "0.5"

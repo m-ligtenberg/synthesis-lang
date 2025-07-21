@@ -1,0 +1,14 @@
+// Simple hello world example
+import Graphics.{clear, plasma, flash}
+import Audio.{mic_input, analyze_fft, beat_detect}
+
+audio = Audio.mic_input()
+fft_data = Audio.analyze_fft(audio, 8)
+beat = Audio.beat_detect(audio)
+
+Graphics.clear(Graphics.black)
+Graphics.plasma(speed: fft_data[0], palette: Graphics.neon)
+
+if beat {
+    Graphics.flash(Graphics.white, 0.1)
+}

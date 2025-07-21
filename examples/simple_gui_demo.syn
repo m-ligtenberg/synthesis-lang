@@ -1,0 +1,125 @@
+// Simple GUI Demo - Phase 2 Feature Showcase
+// Demonstrates the new GUI system capabilities
+
+import GUI.{window, slider, knob, button, toggle, dropdown, xy_pad, color_picker}
+import Graphics.{clear, rectangle, circle, line}
+import Math.{sin, cos}
+import Time.{now}
+
+loop {
+    // Main control window
+    GUI.window("Creative Controls", size: [300, 500]) {
+        content: {
+            // Basic controls
+            volume = GUI.slider("Volume", 0.0, 1.0, 0.8)
+            frequency = GUI.knob("Frequency", 20.0, 20000.0, 440.0)
+            enabled = GUI.toggle("Enable Effect", true)
+            
+            // Selection controls
+            waveform = GUI.dropdown("Waveform", [
+                "Sine", "Square", "Triangle", "Sawtooth"
+            ], "Sine")
+            
+            // 2D control
+            (pan, tilt) = GUI.xy_pad("Pan/Tilt", 
+                x_range: [-1.0, 1.0], 
+                y_range: [-1.0, 1.0], 
+                default: [0.0, 0.0])
+            
+            // Color selection
+            primary_color = GUI.color_picker("Primary Color", [0.2, 0.8, 1.0])
+            secondary_color = GUI.color_picker("Secondary Color", [1.0, 0.4, 0.2])
+            
+            // Actions
+            if GUI.button("Reset All") {
+                volume = 0.5
+                frequency = 440.0
+                pan = 0.0
+                tilt = 0.0
+                enabled = true
+            }
+            
+            GUI.horizontal {
+                if GUI.button("Save Preset") {
+                    // Save current settings
+                }
+                if GUI.button("Load Preset") {
+                    // Load saved settings
+                }
+            }
+        }
+    }
+    
+    // Visualization window
+    GUI.window("Visualization", size: [400, 400]) {
+        content: {
+            // Use GUI values to create visuals
+            bg_color = Graphics.lerp_color(
+                [0.1, 0.1, 0.2], 
+                secondary_color, 
+                volume * 0.3
+            )
+            Graphics.clear(bg_color)
+            
+            if enabled {
+                // Audio-reactive circle
+                radius = 50.0 + volume * 100.0
+                x = 200.0 + pan * 150.0
+                y = 200.0 + tilt * 150.0
+                
+                // Frequency affects color intensity
+                freq_normalized = (frequency - 20.0) / (20000.0 - 20.0)
+                circle_color = Graphics.lerp_color(
+                    primary_color,
+                    secondary_color,
+                    freq_normalized
+                )
+                
+                Graphics.circle(
+                    x: x, y: y,
+                    radius: radius,
+                    color: circle_color
+                )
+                
+                // Waveform visualization
+                if waveform == "Sine" {
+                    for i in 0..360 step 5 {
+                        wave_x = i
+                        wave_y = 300.0 + Math.sin(i * Math.PI / 180.0 * frequency / 100.0) * volume * 50.0
+                        
+                        Graphics.circle(
+                            x: wave_x, y: wave_y,
+                            radius: 2.0,
+                            color: primary_color
+                        )
+                    }
+                }
+                
+                // XY pad visualization
+                Graphics.line(
+                    start: [200.0, 200.0],
+                    end: [x, y],
+                    thickness: 2.0 + volume * 3.0,
+                    color: Graphics.alpha(secondary_color, 0.7)
+                )
+            }
+        }
+    }
+    
+    // Status window
+    GUI.window("Status", size: [250, 200]) {
+        content: {
+            GUI.label("Current Settings:")
+            GUI.separator()
+            
+            GUI.label("Volume: " + (volume * 100.0) + "%")
+            GUI.label("Frequency: " + frequency + " Hz")
+            GUI.label("Waveform: " + waveform)
+            GUI.label("Position: (" + pan + ", " + tilt + ")")
+            GUI.label("Status: " + if enabled { "Active" } else { "Inactive" })
+            
+            GUI.separator()
+            GUI.label("Time: " + Time.now())
+        }
+    }
+}

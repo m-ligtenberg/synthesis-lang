@@ -1,0 +1,261 @@
+// Interactive Audio Visualizer - Phase 2 Demo
+// Showcases real-time audio processing, GUI controls, and advanced graphics
+
+import Audio.{mic_input, analyze_fft, beat_detect, pitch_detect, process_audio}
+import Graphics.{clear, plasma, tunnel, particles, noise, blend_mode, feedback}
+import GUI.{window, slider, knob, toggle, dropdown, xy_pad, color_picker, button}
+import GUI.{spectrum_analyzer, oscilloscope, level_meter}
+import Math.{sin, cos, abs, min, max}
+import Time.{now, delta_time}
+
+// Audio setup
+audio_input = Audio.mic_input()
+audio_processor = Audio.process_audio(audio_input, effects: [
+    Audio.reverb(room_size: 0.5, wet_mix: 0.3),
+    Audio.distortion(drive: 1.0, tone: 0.5)
+])
+
+loop {
+    // Audio analysis
+    raw_audio = Audio.get_samples(audio_input, 512)
+    analysis = Audio.analyze_audio(raw_audio) {
+        fft_bands: 32,
+        beat_detection: true,
+        pitch_detection: true,
+        onset_detection: true
+    }
+    
+    // GUI Controls Window
+    GUI.window("Audio Visualizer", size: [400, 600]) {
+        content: {
+            // Audio Controls
+            audio_controls = GUI.group("Audio Settings") {
+                gain: GUI.slider("Input Gain", 0.0, 2.0, 1.0)
+                sensitivity: GUI.knob("Sensitivity", 0.1, 5.0, 1.0)
+                smoothing: GUI.slider("Smoothing", 0.0, 0.95, 0.7)
+                
+                // Effect controls
+                reverb_enable: GUI.toggle("Reverb", false)
+                if reverb_enable {
+                    reverb_size: GUI.slider("Room Size", 0.1, 1.0, 0.5)
+                    reverb_wet: GUI.slider("Wet Mix", 0.0, 1.0, 0.3)
+                }
+                
+                distortion_enable: GUI.toggle("Distortion", false)
+                if distortion_enable {
+                    distortion_drive: GUI.knob("Drive", 0.1, 10.0, 2.0)
+                    distortion_tone: GUI.slider("Tone", 0.0, 1.0, 0.5)
+                }
+            }
+            
+            // Visual Controls
+            visual_controls = GUI.group("Visual Settings") {
+                effect_type: GUI.dropdown("Effect", [
+                    "Plasma",
+                    "Tunnel", 
+                    "Particles",
+                    "Noise",
+                    "Feedback"
+                ], "Plasma")
+                
+                // Color settings
+                primary_color: GUI.color_picker("Primary Color", [0.0, 1.0, 0.5])
+                secondary_color: GUI.color_picker("Secondary Color", [1.0, 0.0, 0.5])
+                background_color: GUI.color_picker("Background", [0.05, 0.05, 0.1])
+                
+                // Effect parameters
+                speed: GUI.slider("Speed", 0.1, 5.0, 1.0)
+                intensity: GUI.slider("Intensity", 0.0, 3.0, 1.0)
+                scale: GUI.knob("Scale", 0.001, 0.1, 0.01)
+                
+                // Advanced controls
+                (control_x, control_y) = GUI.xy_pad("Control XY", 
+                    x_range: [-1.0, 1.0], 
+                    y_range: [-1.0, 1.0], 
+                    default: [0.0, 0.0])
+                
+                // Blend mode
+                blend_mode: GUI.dropdown("Blend Mode", [
+                    "Normal", "Add", "Multiply", "Screen", 
+                    "Overlay", "SoftLight", "ColorDodge"
+                ], "Add")
+                
+                // Audio reactivity
+                beat_reactive: GUI.toggle("Beat Reactive", true)
+                pitch_reactive: GUI.toggle("Pitch Reactive", false)
+                onset_reactive: GUI.toggle("Onset Reactive", true)
+            }
+            
+            // Analysis Display
+            GUI.group("Audio Analysis") {
+                GUI.spectrum_analyzer(analysis.fft_data, width: 350, height: 100)
+                GUI.oscilloscope(raw_audio, width: 350, height: 80)
+                
+                GUI.horizontal {
+                    GUI.level_meter(analysis.rms_level, analysis.peak_level, 
+                        width: 20, height: 100, vertical: true)
+                    
+                    GUI.vertical {
+                        GUI.label("Beat: " + if analysis.beat_detected { "■" } else { "□" })
+                        if analysis.pitch_hz {
+                            GUI.label("Pitch: " + analysis.pitch_hz + " Hz")
+                        } else {
+                            GUI.label("Pitch: --")
+                        }
+                        GUI.label("RMS: " + (analysis.rms_level * 100) + "%")
+                        GUI.label("Peak: " + (analysis.peak_level * 100) + "%")
+                    }
+                }
+            }
+            
+            // Export controls
+            GUI.group("Export") {
+                if GUI.button("Screenshot", style: "secondary") {
+                    Graphics.save_screenshot("visualizer_" + Time.now() + ".png")
+                }
+                
+                recording = GUI.toggle("Record Video", false)
+                if recording {
+                    GUI.label("● Recording...")
+                }
+            }
+        }
+    }
+    
+    // Main visualization window
+    Graphics.clear(background_color)
+    
+    // Calculate audio-reactive parameters
+    bass_energy = (analysis.fft_data[0] + analysis.fft_data[1] + analysis.fft_data[2]) / 3.0
+    mid_energy = (analysis.fft_data[8] + analysis.fft_data[16]) / 2.0
+    high_energy = (analysis.fft_data[24] + analysis.fft_data[31]) / 2.0
+    
+    // Beat flash effect
+    flash_intensity = 0.0
+    if beat_reactive && analysis.beat_detected {
+        flash_intensity = 0.3
+    }
+    
+    // Onset burst effect  
+    burst_size = 1.0
+    if onset_reactive && analysis.onset_detected {
+        burst_size = 2.0 + bass_energy * 3.0
+    }
+    
+    // Pitch modulation
+    pitch_mod = 1.0
+    if pitch_reactive && analysis.pitch_hz {
+        pitch_mod = 1.0 + (analysis.pitch_hz / 440.0 - 1.0) * 0.5
+    }
+    
+    // Apply gain and sensitivity to audio
+    processed_fft = []
+    for i in 0..32 {
+        processed_fft[i] = analysis.fft_data[i] * gain * sensitivity
+    }
+    
+    // Main effect rendering
+    Graphics.blend_mode(blend_mode)
+    
+    if effect_type == "Plasma" {
+        Graphics.plasma(
+            speed: speed * (1.0 + bass_energy * intensity),
+            scale: scale * pitch_mod,
+            time_offset: control_x * 10.0,
+            color_shift: control_y * Math.PI,
+            primary_color: primary_color,
+            secondary_color: secondary_color,
+            intensity: intensity * (1.0 + mid_energy)
+        )
+    } else if effect_type == "Tunnel" {
+        Graphics.tunnel(
+            speed: speed * (1.0 + bass_energy),
+            twist: control_x * 5.0 + high_energy * intensity,
+            depth: 1.0 + control_y * 2.0,
+            texture_scale: scale * 1000.0 * pitch_mod,
+            color: Graphics.lerp_color(primary_color, secondary_color, mid_energy)
+        )
+    } else if effect_type == "Particles" {
+        // Particle system driven by audio
+        particle_count = 50 + (bass_energy * intensity * 200)
+        
+        Graphics.particles(
+            count: particle_count,
+            emission_rate: 30.0 * (1.0 + mid_energy * intensity),
+            gravity: [control_x * 100.0, control_y * 100.0 - 50.0],
+            size_range: [2.0, 8.0 * (1.0 + high_energy * intensity)],
+            velocity_spread: 100.0 * (1.0 + bass_energy),
+            color_start: primary_color,
+            color_end: secondary_color,
+            life_time: 1.0 + intensity
+        )
+    } else if effect_type == "Noise" {
+        Graphics.noise(
+            octaves: 4,
+            frequency: scale * (1.0 + bass_energy * intensity),
+            amplitude: intensity,
+            time_offset: speed * Time.now() + control_x * 10.0,
+            color_map: Graphics.gradient(
+                primary_color, 
+                secondary_color,
+                shift: control_y + mid_energy * intensity
+            )
+        )
+    } else if effect_type == "Feedback" {
+        Graphics.feedback(
+            amount: 0.95 + high_energy * 0.04,
+            zoom: 1.001 + bass_energy * 0.01 * intensity,
+            rotation: control_x * 0.1 + mid_energy * 0.05,
+            offset: [
+                control_y * 2.0 + Math.sin(Time.now() * speed) * bass_energy,
+                Math.cos(Time.now() * speed * 1.3) * mid_energy
+            ],
+            color_shift: Graphics.lerp_color([1.0, 1.0, 1.0], secondary_color, intensity * 0.1)
+        )
+    }
+    
+    // Overlay frequency bars
+    Graphics.blend_mode("Add")
+    for i in 0..32 {
+        bar_height = processed_fft[i] * 200.0 * burst_size
+        bar_x = (i / 32.0) * Graphics.width
+        bar_width = Graphics.width / 32.0
+        
+        bar_color = Graphics.lerp_color(
+            primary_color,
+            secondary_color, 
+            i / 32.0
+        )
+        bar_color.a = 0.6 + flash_intensity
+        
+        Graphics.rectangle(
+            x: bar_x,
+            y: Graphics.height - bar_height,
+            width: bar_width - 1.0,
+            height: bar_height,
+            color: bar_color
+        )
+    }
+    
+    // Beat flash overlay
+    if flash_intensity > 0.0 {
+        Graphics.blend_mode("Screen")
+        Graphics.rectangle(
+            x: 0, y: 0,
+            width: Graphics.width,
+            height: Graphics.height,
+            color: Graphics.alpha(Graphics.WHITE, flash_intensity)
+        )
+    }
+    
+    // Audio-reactive border
+    border_thickness = 2.0 + bass_energy * intensity * 10.0
+    border_color = Graphics.lerp_color(primary_color, secondary_color, 
+        Math.sin(Time.now() * speed * 5.0) * 0.5 + 0.5)
+    
+    Graphics.blend_mode("Normal")
+    Graphics.border(
+        thickness: border_thickness,
+        color: border_color
+    )
+}

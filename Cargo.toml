@@ -25,9 +25,19 @@ winit = "0.29"
 # Audio
 cpal = "0.15"
 
+# MIDI
+midir = "0.9"
+
 # GUI
 egui = "0.25"
 eframe = "0.25"
+
+# Hardware Integration
+opencv = { version = "0.90", optional = true }
+serialport = "4.2"
+
+# Networking
+rosc = "0.10"
 
 # Utilities
 anyhow = "1.0"
@@ -35,6 +45,7 @@ thiserror = "1.0"
 tokio = { version = "1.0", features = ["full"] }
 num-complex = "0.4"
 rand = "0.8"
+chrono = "0.4"
 
 [dev-dependencies]
 criterion = "0.5"

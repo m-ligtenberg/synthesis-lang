@@ -1,6 +1,6 @@
 # Synthesis
 
-**Universal creative programming language for artists, musicians, and creative technologists.**
+**Universal creative programming language for artists, musicians, and creative nerds.**
 
 Stream-based | Real-time | Cross-platform
 

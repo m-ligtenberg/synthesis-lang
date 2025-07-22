@@ -397,7 +397,7 @@ impl Distortion {
         }
     }
     
-    pub fn process(&self, input: f32) -> f32 {
+    pub fn process(&mut self, input: f32) -> f32 {
         let driven = input * self.drive;
         
         let processed = match self.distortion_type {
@@ -536,7 +536,7 @@ impl ParametricEQ {
                 (a0, a1, a2, b0, b1, b2)
             }
             EQBandType::LowShelf => {
-                let s = 1.0;
+                let _s = 1.0;
                 let beta = (a / band.q_factor).sqrt();
                 let b0 = a * ((a + 1.0) - (a - 1.0) * cos_omega + beta * sin_omega);
                 let b1 = 2.0 * a * ((a - 1.0) - (a + 1.0) * cos_omega);
@@ -606,6 +606,12 @@ impl AudioEffect for Modulation {
     }
 }
 
+impl AudioEffect for ParametricEQ {
+    fn process(&mut self, input: f32) -> f32 {
+        self.process(input)
+    }
+}
+
 impl EffectsChain {
     pub fn new() -> Self {
         Self {
@@ -664,7 +670,7 @@ impl EffectPresets {
         let mut chain = EffectsChain::new();
         
         // High-pass filter to remove low-end rumble
-        let mut hp_filter = Filter::new(FilterType::HighPass, 80.0, 0.7, sample_rate);
+        let hp_filter = Filter::new(FilterType::HighPass, 80.0, 0.7, sample_rate);
         chain.add_effect(Box::new(hp_filter));
         
         // Compressor for dynamics control

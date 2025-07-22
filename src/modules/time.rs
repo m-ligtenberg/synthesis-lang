@@ -1,7 +1,6 @@
 use crate::runtime::Value;
 use std::time::{SystemTime, UNIX_EPOCH, Instant, Duration};
 use std::collections::HashMap;
-use chrono::{DateTime, Utc};
 
 pub fn now(_args: &[Value]) -> crate::Result<Value> {
     let timestamp = SystemTime::now()

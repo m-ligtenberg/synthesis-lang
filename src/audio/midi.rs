@@ -1,7 +1,6 @@
 use midir::{MidiInput, MidiOutput, MidiInputConnection, MidiOutputConnection};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use std::thread;
 use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -18,7 +17,7 @@ pub struct MidiCC {
     pub value: u8,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum MidiMessage {
     NoteOn(MidiNote),
     NoteOff(MidiNote),
@@ -184,7 +183,7 @@ impl MidiInputManager {
                 // Store in message buffer
                 {
                     let mut buffer = message_buffer.lock().unwrap();
-                    buffer.push((Instant::now(), message));
+                    buffer.push((Instant::now(), message.clone()));
                     
                     // Keep buffer size manageable
                     if buffer.len() > 1000 {
@@ -209,7 +208,7 @@ impl MidiInputManager {
                     _ => {}
                 }
             }
-        }, ())?;
+        }, ()).map_err(|e| anyhow::anyhow!("Failed to connect MIDI input: {}", e))?;
         
         self.connections.insert(port_name, connection);
         Ok(())
@@ -224,7 +223,7 @@ impl MidiInputManager {
         buffer
             .iter()
             .filter(|(timestamp, _)| *timestamp >= since)
-            .map(|(_, message)| *message)
+            .map(|(_, message)| message.clone())
             .collect()
     }
     
@@ -234,7 +233,7 @@ impl MidiInputManager {
             .iter()
             .rev()
             .take(max_count)
-            .map(|(_, message)| *message)
+            .map(|(_, message)| message.clone())
             .collect()
     }
     
@@ -296,7 +295,8 @@ impl MidiOutputManager {
         
         // Create a new MidiOutput for this connection
         let output = MidiOutput::new("Synthesis MIDI Output")?;
-        let connection = output.connect(port, "synthesis-output")?;
+        let connection = output.connect(port, "synthesis-output")
+            .map_err(|e| anyhow::anyhow!("Failed to connect MIDI output: {}", e))?;
         
         self.connections.insert(port_name, connection);
         Ok(())

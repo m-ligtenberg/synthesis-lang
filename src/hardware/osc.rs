@@ -79,7 +79,7 @@ impl OscServer {
                 let mut buffer = [0u8; rosc::decoder::MTU];
                 
                 while let Ok((size, _addr)) = socket_clone.recv_from(&mut buffer) {
-                    if let Ok(packet) = decoder::decode_udp(&buffer[..size]) {
+                    if let Ok((_, packet)) = decoder::decode_udp(&buffer[..size]) {
                         match packet {
                             OscPacket::Message(msg) => {
                                 // Store parameter value
@@ -285,7 +285,7 @@ impl OscPresets {
     }
     
     // Max/MSP integration
-    pub fn setup_max_msp(server: &mut OscServer, client: &OscClient) {
+    pub fn setup_max_msp(server: &mut OscServer, _client: &OscClient) {
         // Register handlers for Max/MSP messages
         server.register_pattern_handler("/synth/freq".to_string(), |msg| {
             if let Some(OscType::Float(freq)) = msg.args.first() {

@@ -1,10 +1,3 @@
-# Synthesis
-
-**Universele creatieve programmeertaal voor kunstenaars, muzikanten en creatieve nerds.**  
-*Stream-gebaseerd – Realtime – Cross-platform*
-
----
-
 ## Overzicht
 
 Synthesis is een moderne creatieve programmeertaal ontworpen voor makers die technologie als expressief medium gebruiken. Van audiovisuele installaties tot realtime optredens en interactieve tools — deze taal is ontwikkeld om het creatieve proces intuïtiever, performanter en toegankelijker te maken.

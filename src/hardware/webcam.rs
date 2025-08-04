@@ -42,7 +42,7 @@ pub struct WebcamManager {
     motion_threshold: f32,
     is_capturing: bool,
     frame_skip: u32,
-    frame_counter: u32,
+    _frame_counter: u32,
 }
 
 impl WebcamManager {
@@ -56,7 +56,7 @@ impl WebcamManager {
             motion_threshold: 30.0,
             is_capturing: false,
             frame_skip: 2, // Process every 3rd frame for performance
-            frame_counter: 0,
+            _frame_counter: 0,
         }
     }
     

@@ -1,0 +1,43 @@
+// Math module demonstration
+import Math.{sin, cos, pow, sqrt, clamp, lerp}
+import Graphics.{clear, circle, text}
+
+// Test basic math functions
+angle = 3.14159 / 4.0  // 45 degrees
+sin_val = Math.sin(angle)
+cos_val = Math.cos(angle)
+power_val = Math.pow(2.0, 3.0)  // 2^3 = 8
+sqrt_val = Math.sqrt(16.0)      // sqrt(16) = 4
+
+// Test clamp and lerp
+clamped = Math.clamp(150.0, 0.0, 100.0)  // Should be 100.0
+interpolated = Math.lerp(0.0, 100.0, 0.5)  // Should be 50.0
+
+// Display results
+Graphics.clear(Graphics.black)
+Graphics.text("Math Demo Results:", 50.0, 50.0, Graphics.white, 16.0)
+
+result_text = "sin(45°) = " + sin_val
+Graphics.text(result_text, 50.0, 80.0, Graphics.white, 14.0)
+
+result_text2 = "cos(45°) = " + cos_val
+Graphics.text(result_text2, 50.0, 100.0, Graphics.white, 14.0)
+
+result_text3 = "2^3 = " + power_val
+Graphics.text(result_text3, 50.0, 120.0, Graphics.white, 14.0)
+
+result_text4 = "sqrt(16) = " + sqrt_val
+Graphics.text(result_text4, 50.0, 140.0, Graphics.white, 14.0)
+
+result_text5 = "clamp(150, 0, 100) = " + clamped
+Graphics.text(result_text5, 50.0, 160.0, Graphics.white, 14.0)
+
+result_text6 = "lerp(0, 100, 0.5) = " + interpolated
+Graphics.text(result_text6, 50.0, 180.0, Graphics.white, 14.0)
+
+// Visual demonstration
+center_x = 400.0
+center_y = 300.0
+radius = sin_val * 100.0
+
+Graphics.circle(center_x, center_y, radius, Graphics.white)

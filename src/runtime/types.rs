@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::fmt;
+use crate::runtime::units::UnitValue;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
@@ -11,6 +12,7 @@ pub enum Value {
     Function(Function),
     Object(HashMap<String, Value>),
     Array(Vec<Value>),
+    UnitValue(UnitValue),
     Null,
 }
 
@@ -38,6 +40,7 @@ impl fmt::Display for Value {
                 }
                 write!(f, "]")
             }
+            Value::UnitValue(unit_val) => write!(f, "{}{}", unit_val.value, unit_val.unit.to_string()),
             Value::Null => write!(f, "null"),
         }
     }
@@ -77,6 +80,7 @@ impl Value {
             Value::Function(_) => "function",
             Value::Object(_) => "object",
             Value::Array(_) => "array",
+            Value::UnitValue(_) => "unit_value",
             Value::Null => "null",
         }
     }
@@ -87,6 +91,7 @@ impl Value {
             Value::Integer(n) => *n != 0,
             Value::Float(f) => *f != 0.0,
             Value::String(s) => !s.is_empty(),
+            Value::UnitValue(unit_val) => unit_val.value != 0.0,
             Value::Null => false,
             _ => true,
         }
@@ -96,6 +101,7 @@ impl Value {
         match self {
             Value::Integer(n) => Some(*n as f64),
             Value::Float(f) => Some(*f),
+            Value::UnitValue(unit_val) => Some(unit_val.to_base_value()),
             _ => None,
         }
     }

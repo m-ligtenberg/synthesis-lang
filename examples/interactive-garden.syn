@@ -1,0 +1,367 @@
+# Interactive Digital Garden - Synthesis Language Example
+# A comprehensive example showcasing advanced language features
+# This creates a living, breathing digital ecosystem that responds to audio and user interaction
+
+import Audio.{mic_input, analyze_fft, beat_detect, frequency_bands}
+import Graphics.{clear, particle_system, fractal_tree, color_palette, bloom_effect}
+import Generate.{perlin_noise, l_system, euclidean_rhythm}
+import ML.{load_model, style_transfer}
+import Hardware.{leap_motion, webcam}
+import Network.{create_session, share_variable}
+import GUI.{slider, button, color_picker, control_panel}
+import Timeline.{every, after, while, sequence}
+
+# =================================================================
+# GLOBAL STATE & CONFIGURATION
+# =================================================================
+
+# Shared session for collaborative performances
+garden_session = Network.create_session("digital_garden", port: 8080)
+Network.share_variable("growth_rate", initial: 1.0)
+Network.share_variable("season", initial: "spring")
+
+# Audio analysis setup
+audio = Audio.mic_input()
+spectrum = Audio.analyze_fft(audio, bands: 16)
+beats = Audio.beat_detect(audio, sensitivity: 0.7)
+
+# Hardware inputs
+motion = Hardware.leap_motion()
+camera = Hardware.webcam()
+
+# ML style transfer for visual processing
+nature_style = ML.load_model("impressionist_landscape.model")
+
+# Color palettes that change with seasons
+season_palettes = {
+    spring: Graphics.palette([#90EE90, #98FB98, #FFB6C1, #87CEEB]),
+    summer: Graphics.palette([#32CD32, #FFD700, #FF6347, #87CEFA]),
+    autumn: Graphics.palette([#FF8C00, #DC143C, #B8860B, #8B4513]),
+    winter: Graphics.palette([#F0F8FF, #B0C4DE, #4682B4, #2F4F4F])
+}
+
+# =================================================================
+# GENERATIVE ECOSYSTEM COMPONENTS  
+# =================================================================
+
+# L-System for organic growth patterns
+tree_grammar = Generate.l_system {
+    axiom: "F",
+    rules: {
+        "F" => "F[+F]F[-F]F",
+        "+" => "+",
+        "-" => "-"
+    },
+    angle: 25.degrees,
+    iterations: 4
+}
+
+# Fractal mountains for background
+mountain_fractal = Generate.fractal_terrain {
+    octaves: 6,
+    persistence: 0.5,
+    scale: 0.01,
+    height_multiplier: 200.px
+}
+
+# Euclidean rhythm generators for natural timing
+growth_rhythm = Generate.euclidean(hits: 3, steps: 8)
+bloom_rhythm = Generate.euclidean(hits: 5, steps: 13)
+wind_rhythm = Generate.euclidean(hits: 2, steps: 7)
+
+# =================================================================
+# INTERACTIVE CONTROL PANEL
+# =================================================================
+
+controls = GUI.control_panel("Garden Controls", position: [10.px, 10.px]) {
+    ecosystem_health: GUI.slider("Ecosystem Health", 0.0, 1.0, 0.8),
+    growth_speed: GUI.slider("Growth Speed", 0.1, 3.0, 1.0),
+    weather_intensity: GUI.slider("Weather", 0.0, 1.0, 0.5),
+    current_season: GUI.dropdown("Season", ["spring", "summer", "autumn", "winter"], "spring"),
+    enable_ml_style: GUI.toggle("AI Style Transfer", false),
+    collaboration_mode: GUI.toggle("Network Collaboration", true)
+}
+
+# =================================================================
+# MAIN RENDER LOOP WITH PATTERN MATCHING
+# =================================================================
+
+loop {
+    # Clear canvas with seasonal sky color
+    current_palette = season_palettes[controls.current_season]
+    Graphics.clear(current_palette.background)
+    
+    # Audio-reactive pattern matching for different events
+    match Audio.classify_beat(beats) {
+        Kick => {
+            # Strong bass creates earthquake effect
+            Graphics.screen_shake(intensity: spectrum[0] * 10.px, duration: 0.2.s)
+            
+            # Trigger new tree growth
+            if (growth_rhythm.tick()) {
+                new_tree = tree_grammar.generate(
+                    position: [random(20%, 80%), 100%],
+                    scale: spectrum[0] * 2.0,
+                    color: current_palette.primary
+                )
+                trees.add(new_tree)
+            }
+        },
+        
+        Snare => {
+            # Snare creates flowering events  
+            if (bloom_rhythm.tick()) {
+                trees.each { tree =>
+                    tree.add_flowers(
+                        count: spectrum[4] * 20,
+                        color: current_palette.accent,
+                        animation: "spiral_bloom"
+                    )
+                }
+            }
+        },
+        
+        HiHat => {
+            # Hi-hats create gentle wind effects
+            if (wind_rhythm.tick()) {
+                Graphics.wind_effect(
+                    direction: perlin_noise(time * 0.1) * 360.degrees,
+                    strength: spectrum[8] * 0.5,
+                    particles: true
+                )
+            }
+        }
+    }
+    
+    # =================================================================
+    # GESTURE-BASED INTERACTION
+    # =================================================================
+    
+    # Hand position controls environmental factors
+    if (motion.hands_detected > 0) {
+        hand = motion.primary_hand
+        
+        # Hand height controls time of day (lighting)
+        sun_position = hand.y.normalize(0%, 100%)
+        Graphics.set_sun_position(sun_position)
+        
+        # Hand spread controls wind intensity
+        wind_force = hand.spread.normalize(0.0, 1.0)
+        Graphics.wind_particles(force: wind_force * controls.weather_intensity)
+        
+        # Finger gestures trigger special effects
+        match hand.gesture {
+            OpenPalm => {
+                # Open palm creates rain
+                Graphics.rain_effect(
+                    intensity: controls.weather_intensity,
+                    duration: 2.s
+                )
+            },
+            
+            Fist => {
+                # Closed fist creates lightning
+                Graphics.lightning_strike(
+                    position: [hand.x.normalize(0%, 100%), 30%],
+                    branches: 5,
+                    color: Graphics.electric_blue
+                )
+            },
+            
+            Peace => {
+                # Peace sign creates rainbow
+                Graphics.rainbow_arc(
+                    center: [hand.x.normalize(0%, 100%), hand.y.normalize(0%, 100%)],
+                    radius: 200.px,
+                    fade_duration: 3.s
+                )
+            }
+        }
+    }
+    
+    # =================================================================
+    # TEMPORAL EVOLUTION & SEASONAL CHANGES
+    # =================================================================
+    
+    # Gradual seasonal transitions
+    every(30.s) {
+        if (controls.current_season != Network.get_shared("season")) {
+            # Smooth transition to new season
+            Graphics.seasonal_transition(
+                from: controls.current_season,
+                to: Network.get_shared("season"),
+                duration: 5.s
+            )
+            controls.current_season = Network.get_shared("season")
+        }
+    }
+    
+    # Dynamic ecosystem evolution
+    while (controls.ecosystem_health > 0.3) {
+        # Trees grow over time with audio influence
+        trees.each { tree =>
+            growth_factor = controls.growth_speed * 
+                           (1.0 + spectrum.average() * 0.5) *
+                           controls.ecosystem_health
+            
+            tree.grow(amount: growth_factor * 0.01)
+            
+            # Trees can spawn seeds that become new trees
+            if (tree.maturity > 0.8 && random() < 0.001) {
+                seed_position = tree.position + 
+                               [random(-100.px, 100.px), random(50.px, 150.px)]
+                               
+                future_tree = tree_grammar.generate(
+                    position: seed_position,
+                    parent_genetics: tree.dna,
+                    mutation_rate: 0.1
+                )
+                
+                # Delayed growth for realism
+                after(random(2.s, 10.s)) {
+                    trees.add(future_tree)
+                }
+            }
+        }
+    }
+    
+    # =================================================================
+    # COLLABORATIVE FEATURES
+    # =================================================================
+    
+    if (controls.collaboration_mode) {
+        # Share local state with remote performers
+        Network.broadcast_state({
+            tree_count: trees.length,
+            audio_energy: spectrum.average(),
+            gesture_activity: motion.activity_level,
+            current_mood: Audio.classify_mood(audio)
+        })
+        
+        # Receive and visualize remote performer's influence
+        remote_states = Network.get_remote_states()
+        remote_states.each { performer, state =>
+            # Show remote performer's "presence" as colored aura
+            Graphics.draw_aura(
+                position: [random(0%, 100%), random(0%, 100%)],
+                color: performer.color,
+                intensity: state.audio_energy,
+                size: state.gesture_activity * 100.px
+            )
+        }
+    }
+    
+    # =================================================================
+    # AI-ENHANCED VISUAL PROCESSING
+    # =================================================================
+    
+    if (controls.enable_ml_style) {
+        # Apply style transfer to entire scene
+        current_frame = Graphics.capture_frame()
+        styled_frame = nature_style.transform(current_frame)
+        
+        # Blend original and styled versions
+        Graphics.blend_modes(
+            original: current_frame,
+            styled: styled_frame,
+            mix: controls.weather_intensity,
+            mode: "soft_light"
+        )
+    }
+    
+    # =================================================================
+    # PARTICLE SYSTEMS & EFFECTS
+    # =================================================================
+    
+    # Audio-reactive particle systems
+    Graphics.particle_system("fireflies") {
+        count: spectrum[12] * 50,
+        behavior: "swarm",
+        target: motion.hands_detected > 0 ? motion.primary_hand.position : [50%, 70%],
+        color: current_palette.accent,
+        glow: true,
+        lifetime: 3.s
+    }
+    
+    # Pollen particles that follow wind
+    Graphics.particle_system("pollen") {
+        emitters: trees.flowers,
+        velocity: Graphics.wind_vector * controls.weather_intensity,
+        color: Graphics.fade_alpha(current_palette.secondary, 0.3),
+        size: random(1.px, 3.px),
+        physics: "wind_affected"
+    }
+    
+    # =================================================================
+    # POST-PROCESSING & BLOOM EFFECTS
+    # =================================================================
+    
+    # Apply bloom to bright elements
+    Graphics.bloom_effect(
+        threshold: 0.8,
+        intensity: controls.ecosystem_health * spectrum.average(),
+        radius: 10.px
+    )
+    
+    # Depth of field based on focus distance
+    focus_distance = motion.hands_detected > 0 ? 
+                    motion.primary_hand.z.normalize(0.1, 10.0) : 
+                    5.0
+                    
+    Graphics.depth_of_field(
+        focus_distance: focus_distance,
+        aperture: controls.weather_intensity * 2.0
+    )
+    
+    # =================================================================
+    # DEBUG & PERFORMANCE MONITORING
+    # =================================================================
+    
+    # Display performance metrics
+    GUI.debug_panel(position: [Graphics.width - 200.px, 10.px]) {
+        fps: Graphics.get_fps(),
+        audio_latency: Audio.get_latency(),
+        tree_count: trees.length,
+        particle_count: Graphics.active_particles,
+        network_latency: Network.get_ping(),
+        gpu_usage: Graphics.get_gpu_usage()
+    }
+}
+
+# =================================================================
+# EXPORT & SHARING
+# =================================================================
+
+# Save current garden state for later loading
+save_garden_state = GUI.button("Save Garden", style: "primary") {
+    state = {
+        trees: trees.serialize(),
+        season: controls.current_season,
+        timestamp: Time.now(),
+        audio_profile: Audio.get_analysis_summary()
+    }
+    File.save("my_garden.json", state)
+    GUI.show_notification("Garden saved successfully!")
+}
+
+# Export as interactive web app
+export_web_app = GUI.button("Share Online", style: "secondary") {
+    Web.export_webapp("digital_garden") {
+        include_audio: true,
+        include_webcam: false,  # Privacy consideration
+        include_gestures: true,
+        mobile_optimized: true,
+        collaboration_enabled: true
+    }
+    GUI.show_notification("Web app generated! Check exports/ folder")
+}
+
+# Create time-lapse recording
+create_timelapse = GUI.button("Record Time-lapse", style: "accent") {
+    Recording.start_timelapse(
+        duration: 5.minutes,
+        output_fps: 30,
+        resolution: [1920, 1080],
+        compression: "h264"
+    )
+}

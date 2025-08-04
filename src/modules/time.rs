@@ -487,3 +487,69 @@ impl Default for AnimationCurve {
         Self::new()
     }
 }
+
+// Module functions for the runtime
+pub fn timeline_create(_args: &[Value]) -> crate::Result<Value> {
+    let timeline = Timeline::new();
+    let mut result = HashMap::new();
+    result.insert("type".to_string(), Value::String("timeline".to_string()));
+    result.insert("current_time".to_string(), Value::Float(timeline.current_time));
+    result.insert("is_playing".to_string(), Value::Boolean(timeline.is_playing));
+    Ok(Value::Object(result))
+}
+
+pub fn sequencer_create(args: &[Value]) -> crate::Result<Value> {
+    let bpm = args.get(0)
+        .and_then(|v| v.as_number())
+        .unwrap_or(120.0) as f32;
+    
+    let sequencer = Sequencer::new(bpm);
+    let mut result = HashMap::new();
+    result.insert("type".to_string(), Value::String("sequencer".to_string()));
+    result.insert("bpm".to_string(), Value::Float(sequencer.bpm as f64));
+    result.insert("tracks".to_string(), Value::Array(Vec::new()));
+    Ok(Value::Object(result))
+}
+
+pub fn animation_curve_create(_args: &[Value]) -> crate::Result<Value> {
+    let curve = AnimationCurve::new();
+    let mut result = HashMap::new();
+    result.insert("type".to_string(), Value::String("animation_curve".to_string()));
+    result.insert("keyframes".to_string(), Value::Array(Vec::new()));
+    Ok(Value::Object(result))
+}
+
+pub fn every(args: &[Value]) -> crate::Result<Value> {
+    if args.is_empty() {
+        return Err(anyhow::anyhow!("every requires a duration argument"));
+    }
+    
+    let duration = args[0].as_number().ok_or_else(|| anyhow::anyhow!("Duration must be a number"))?;
+    
+    let mut result = HashMap::new();
+    result.insert("type".to_string(), Value::String("temporal_every".to_string()));
+    result.insert("duration".to_string(), Value::Float(duration));
+    Ok(Value::Object(result))
+}
+
+pub fn after(args: &[Value]) -> crate::Result<Value> {
+    if args.is_empty() {
+        return Err(anyhow::anyhow!("after requires a duration argument"));
+    }
+    
+    let duration = args[0].as_number().ok_or_else(|| anyhow::anyhow!("Duration must be a number"))?;
+    
+    let mut result = HashMap::new();
+    result.insert("type".to_string(), Value::String("temporal_after".to_string()));
+    result.insert("duration".to_string(), Value::Float(duration));
+    Ok(Value::Object(result))
+}
+
+pub fn sequence(args: &[Value]) -> crate::Result<Value> {
+    let steps = args.iter().cloned().collect();
+    
+    let mut result = HashMap::new();
+    result.insert("type".to_string(), Value::String("sequence".to_string()));
+    result.insert("steps".to_string(), Value::Array(steps));
+    Ok(Value::Object(result))
+}

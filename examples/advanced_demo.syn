@@ -1,0 +1,172 @@
+// Advanced Synthesis language demo showcasing enhanced modules
+import Graphics.{clear, plasma, rect, circle, text}
+import Audio.{mic_input, analyze_fft, beat_detect, load_file, volume}
+import Math.{sin, cos, pow, clamp, lerp, floor}
+import GUI.{window, button, slider, dropdown}
+
+// Initialize audio system
+audio = Audio.mic_input()
+fft_spectrum = Audio.analyze_fft(audio, 32)
+beat = Audio.beat_detect(audio)
+
+// Math operations for visual calculations
+time = 0.0
+amplitude = fft_spectrum[0]
+frequency_low = fft_spectrum[1]
+frequency_mid = fft_spectrum[16]
+frequency_high = fft_spectrum[31]
+
+// Use math functions for smooth animations
+smooth_amplitude = Math.lerp(0.0, 1.0, amplitude)
+wave_x = Math.sin(time * 2.0) * 100.0
+wave_y = Math.cos(time * 1.5) * 80.0
+circle_radius = Math.clamp(amplitude * 200.0, 10.0, 100.0)
+
+// GUI controls for user interaction
+GUI.window("Advanced Audio Visualizer", theme: "dark") {
+    // Control panel
+    controls = GUI.control_group("Settings") {
+        sensitivity: GUI.slider("Sensitivity", 0.1, 5.0, 1.0)
+        effect_type: GUI.dropdown("Effect", ["plasma", "waveform", "spectrum"], "plasma")
+        show_beat: GUI.checkbox("Show Beat Flash", true)
+        color_mode: GUI.dropdown("Color Mode", ["neon", "rainbow", "mono"], "neon")
+    }
+    
+    // Export button
+    export_pressed = GUI.button("Export to Web", style: "primary")
+    if export_pressed {
+        // Mock web export
+        Web.export_webapp("advanced_visualizer") {
+            controls: ["sensitivity", "effect_type", "show_beat", "color_mode"]
+            canvas: true
+            audio_input: true
+        }
+    }
+}
+
+// Graphics rendering with enhanced functions
+Graphics.clear(Graphics.black)
+
+// Draw different effects based on selection
+if controls.effect_type == "plasma" {
+    Graphics.plasma(
+        speed: frequency_low * controls.sensitivity,
+        intensity: smooth_amplitude,
+        palette: controls.color_mode
+    )
+} else if controls.effect_type == "waveform" {
+    // Draw animated waveform
+    center_x = 400.0
+    center_y = 300.0
+    
+    Graphics.circle(
+        center_x + wave_x,
+        center_y + wave_y,
+        circle_radius,
+        Graphics.white
+    )
+    
+    // Draw frequency bars
+    bar_width = 800.0 / 32.0
+    i = 0
+    while i < 32 {
+        bar_height = fft_spectrum[i] * 400.0 * controls.sensitivity
+        bar_x = i * bar_width
+        bar_y = 600.0 - bar_height
+        
+        // Color based on frequency range
+        color = Graphics.white
+        if i < 8 {
+            color = 0xFF0000  // Red for bass
+        } else if i < 24 {
+            color = 0x00FF00  // Green for mids
+        } else {
+            color = 0x0000FF  // Blue for highs
+        }
+        
+        Graphics.rect(bar_x, bar_y, bar_width - 2.0, bar_height, color)
+        i = i + 1
+    }
+} else if controls.effect_type == "spectrum" {
+    // 3D-style spectrum visualization
+    Graphics.starfield(count: 200, speed: frequency_mid * 2.0)
+    
+    // Overlay circular spectrum
+    center_x = 400.0
+    center_y = 300.0
+    radius = 150.0
+    
+    i = 0
+    while i < 32 {
+        angle = (i / 32.0) * 6.28318  // 2 * PI
+        amp = fft_spectrum[i] * controls.sensitivity
+        
+        start_x = center_x + Math.cos(angle) * radius
+        start_y = center_y + Math.sin(angle) * radius
+        end_x = center_x + Math.cos(angle) * (radius + amp * 100.0)
+        end_y = center_y + Math.sin(angle) * (radius + amp * 100.0)
+        
+        Graphics.line(start_x, start_y, end_x, end_y, Graphics.white)
+        i = i + 1
+    }
+}
+
+// Beat-reactive flash
+if beat && controls.show_beat {
+    Graphics.flash(Graphics.white, 0.15)
+}
+
+// Display information
+fps_text = "FPS: 60"
+Graphics.text(fps_text, 10.0, 10.0, Graphics.white, 16.0)
+
+amplitude_text = "Amplitude: " + Math.floor(amplitude * 100.0) + "%"
+Graphics.text(amplitude_text, 10.0, 35.0, Graphics.white, 16.0)
+
+if beat {
+    Graphics.text("♪ BEAT ♪", 10.0, 60.0, 0xFFFF00, 20.0)
+}
+
+// Mathematical demonstrations
+demo_x = 650.0
+demo_y = 50.0
+
+// Trigonometric wave
+wave_points = 50
+i = 0
+while i < wave_points {
+    t = (i / wave_points) * 6.28318
+    x = demo_x + i * 2.0
+    y = demo_y + Math.sin(t + time) * 30.0
+    
+    Graphics.circle(x, y, 2.0, 0x00FFFF)
+    i = i + 1
+}
+
+// Power function visualization
+Graphics.text("Math Demo: y = x^2", demo_x, demo_y + 80.0, Graphics.white, 12.0)
+i = 0
+while i < 20 {
+    x_val = i / 5.0
+    y_val = Math.pow(x_val, 2.0)
+    
+    x_pixel = demo_x + i * 5.0
+    y_pixel = demo_y + 120.0 - y_val * 10.0
+    
+    Graphics.circle(x_pixel, y_pixel, 3.0, 0xFF8000)
+    i = i + 1
+}
+
+// Logarithmic curve
+Graphics.text("Math Demo: y = log(x)", demo_x, demo_y + 160.0, Graphics.white, 12.0)
+i = 1
+while i < 20 {
+    x_val = i / 2.0
+    y_val = Math.log(x_val)
+    
+    x_pixel = demo_x + i * 5.0
+    y_pixel = demo_y + 200.0 - y_val * 20.0
+    
+    Graphics.circle(x_pixel, y_pixel, 3.0, 0x8000FF)
+    i = i + 1
+}

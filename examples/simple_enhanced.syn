@@ -1,0 +1,37 @@
+// Simple enhanced module demo
+import Audio.{mic_input, analyze_fft, beat_detect}
+import Graphics.{clear, rect, circle, text}
+import Math.{sin, clamp}
+
+// Initialize audio
+audio = Audio.mic_input()
+fft_data = Audio.analyze_fft(audio, 8)
+beat = Audio.beat_detect(audio)
+
+// Extract frequency data
+bass = fft_data[0]
+treble = fft_data[7]
+
+// Use math functions
+smooth_bass = Math.clamp(bass * 3.0, 0.0, 1.0)
+wave_y = Math.sin(smooth_bass * 6.0) * 50.0
+
+// Clear and draw
+Graphics.clear(Graphics.black)
+
+// Draw bass level rectangle
+bass_height = smooth_bass * 200.0
+Graphics.rect(100.0, 300.0 - bass_height, 50.0, bass_height, Graphics.white)
+
+// Draw animated circle
+Graphics.circle(300.0, 200.0 + wave_y, 30.0, Graphics.white)
+
+// Beat flash
+if beat {
+    Graphics.circle(400.0, 150.0, 40.0, Graphics.white)
+}
+
+// Text
+Graphics.text("Enhanced Demo", 50.0, 50.0, Graphics.white, 16.0)
+Graphics.text("Bass Level Bar", 80.0, 350.0, Graphics.white, 12.0)
+Graphics.text("Sin Wave Circle", 250.0, 350.0, Graphics.white, 12.0)

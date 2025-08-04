@@ -46,23 +46,23 @@ impl NoiseGenerator {
     
     fn simplex_noise(&self, x: f32, y: f32) -> f32 {
         // Simplified 2D simplex noise implementation
-        let F2 = 0.5 * (3.0_f32.sqrt() - 1.0);
-        let G2 = (3.0 - 3.0_f32.sqrt()) / 6.0;
+        let f2 = 0.5 * (3.0_f32.sqrt() - 1.0);
+        let g2 = (3.0 - 3.0_f32.sqrt()) / 6.0;
         
-        let s = (x + y) * F2;
+        let s = (x + y) * f2;
         let i = (x + s).floor() as i32;
         let j = (y + s).floor() as i32;
         
-        let t = ((i + j) as f32) * G2;
+        let t = ((i + j) as f32) * g2;
         let x0 = x - (i as f32) + t;
         let y0 = y - (j as f32) + t;
         
         let (i1, j1) = if x0 > y0 { (1, 0) } else { (0, 1) };
         
-        let x1 = x0 - i1 as f32 + G2;
-        let y1 = y0 - j1 as f32 + G2;
-        let x2 = x0 - 1.0 + 2.0 * G2;
-        let y2 = y0 - 1.0 + 2.0 * G2;
+        let x1 = x0 - i1 as f32 + g2;
+        let y1 = y0 - j1 as f32 + g2;
+        let x2 = x0 - 1.0 + 2.0 * g2;
+        let y2 = y0 - 1.0 + 2.0 * g2;
         
         let ii = i & 255;
         let jj = j & 255;

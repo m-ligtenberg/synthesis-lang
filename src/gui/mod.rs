@@ -56,7 +56,7 @@ impl SynthesisGui {
             ui.collapsing("Controls", |ui| {
                 ui.label("Phase 2 GUI System Demo");
                 ui.horizontal(|ui| {
-                    ui.button("Test Button");
+                    let _ = ui.button("Test Button");
                     ui.checkbox(&mut true, "Test Toggle");
                 });
                 ui.add(egui::Slider::new(&mut 0.5f32, 0.0..=1.0).text("Test Slider"));

@@ -1,0 +1,66 @@
+// Enhanced audio processing demo
+import Audio.{mic_input, analyze_fft, beat_detect, volume}
+import Graphics.{clear, rect, circle, text}
+import Math.{sin, clamp, lerp}
+
+// Initialize audio
+audio = Audio.mic_input()
+fft_data = Audio.analyze_fft(audio, 16)
+beat = Audio.beat_detect(audio)
+
+// Apply volume control
+processed_audio = Audio.volume(audio, 0.8)
+
+// Extract frequency bands
+bass = fft_data[0]
+mid_low = fft_data[4] 
+mid_high = fft_data[8]
+treble = fft_data[15]
+
+// Use math to smooth values
+smooth_bass = Math.clamp(bass * 2.0, 0.0, 1.0)
+smooth_mid = Math.clamp(mid_low + mid_high, 0.0, 1.0)
+smooth_treble = Math.clamp(treble * 1.5, 0.0, 1.0)
+
+// Clear screen
+Graphics.clear(Graphics.black)
+
+// Draw frequency visualization bars
+bar_width = 100.0
+spacing = 120.0
+
+// Bass bar (red)
+bass_height = smooth_bass * 300.0
+Graphics.rect(100.0, 400.0 - bass_height, bar_width, bass_height, 0xFF0000)
+
+// Mid bar (green)  
+mid_height = smooth_mid * 300.0
+Graphics.rect(220.0, 400.0 - mid_height, bar_width, mid_height, 0x00FF00)
+
+// Treble bar (blue)
+treble_height = smooth_treble * 300.0
+Graphics.rect(340.0, 400.0 - treble_height, bar_width, treble_height, 0x0000FF)
+
+// Beat indicator
+if beat {
+    Graphics.circle(400.0, 200.0, 50.0, 0xFFFF00)
+    Graphics.text("BEAT!", 370.0, 190.0, 0xFFFF00, 20.0)
+}
+
+// Draw animated sine wave using math
+i = 0
+while i < 50 {
+    x = 500.0 + i * 6.0
+    y = 300.0 + Math.sin(i * 0.3 + smooth_bass * 10.0) * 30.0
+    Graphics.circle(x, y, 3.0, 0x00FFFF)
+    i = i + 1
+}
+
+// Labels
+Graphics.text("BASS", 115.0, 420.0, 0xFF0000, 14.0)
+Graphics.text("MID", 240.0, 420.0, 0x00FF00, 14.0)
+Graphics.text("TREBLE", 340.0, 420.0, 0x0000FF, 14.0)
+
+// Audio info
+Graphics.text("Enhanced Audio Demo", 50.0, 50.0, Graphics.white, 18.0)
+Graphics.text("Real-time FFT Analysis", 50.0, 80.0, Graphics.white, 14.0)

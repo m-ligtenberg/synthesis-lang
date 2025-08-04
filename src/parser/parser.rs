@@ -119,18 +119,20 @@ impl<'a> Parser<'a> {
     }
     
     fn parse_statement(&mut self) -> crate::Result<Statement> {
-        if self.match_token(&Token::If) {
-            return self.parse_if_statement();
-        }
-        
-        if let Some(Token::Identifier(_)) = self.current_token() {
-            if self.peek_token(1) == Some(&Token::Assignment) {
-                return self.parse_assignment();
+        match self.current_token() {
+            Some(Token::If) => self.parse_if_statement(),
+            Some(Token::Match) => self.parse_match_statement(),
+            Some(Token::Every) => self.parse_temporal_statement(),
+            Some(Token::After) => self.parse_temporal_statement(),
+            Some(Token::While) => self.parse_temporal_statement(),
+            Some(Token::Identifier(_)) if self.peek_token(1) == Some(&Token::Assignment) => {
+                self.parse_assignment()
+            }
+            _ => {
+                let expr = self.parse_expression()?;
+                Ok(Statement::Expression(expr))
             }
         }
-        
-        let expr = self.parse_expression()?;
-        Ok(Statement::Expression(expr))
     }
     
     fn parse_assignment(&mut self) -> crate::Result<Statement> {
@@ -175,8 +177,132 @@ impl<'a> Parser<'a> {
         })
     }
     
+    fn parse_match_statement(&mut self) -> crate::Result<Statement> {
+        self.consume_token(Token::Match)?;
+        let expression = self.parse_expression()?;
+        self.consume_token(Token::LeftBrace)?;
+        
+        let mut arms = Vec::new();
+        while !self.match_token(&Token::RightBrace) && !self.is_at_end() {
+            let pattern = self.parse_pattern()?;
+            self.consume_token(Token::Arrow)?;
+            self.consume_token(Token::LeftBrace)?;
+            let body = self.parse_statements()?;
+            self.consume_token(Token::RightBrace)?;
+            
+            arms.push(MatchArm { pattern, body });
+            
+            if self.match_token(&Token::Comma) {
+                self.advance();
+            }
+        }
+        
+        self.consume_token(Token::RightBrace)?;
+        Ok(Statement::Match { expression, arms })
+    }
+    
+    fn parse_pattern(&mut self) -> crate::Result<Pattern> {
+        match self.current_token() {
+            Some(Token::Underscore) => {
+                self.advance();
+                Ok(Pattern::Wildcard)
+            }
+            Some(Token::Identifier(name)) => {
+                let name = name.clone();
+                self.advance();
+                
+                if self.match_token(&Token::LeftParen) {
+                    self.advance();
+                    let mut fields = Vec::new();
+                    while !self.match_token(&Token::RightParen) && !self.is_at_end() {
+                        fields.push(self.parse_pattern()?);
+                        if self.match_token(&Token::Comma) {
+                            self.advance();
+                        }
+                    }
+                    self.consume_token(Token::RightParen)?;
+                    Ok(Pattern::Enum { name, fields: Some(fields) })
+                } else {
+                    Ok(Pattern::Identifier(name))
+                }
+            }
+            Some(Token::Integer(val)) => {
+                let val = *val;
+                self.advance();
+                Ok(Pattern::Literal(Literal::Integer(val)))
+            }
+            Some(Token::Float(val)) => {
+                let val = *val;
+                self.advance();
+                Ok(Pattern::Literal(Literal::Float(val)))
+            }
+            Some(Token::String(val)) => {
+                let val = val.clone();
+                self.advance();
+                Ok(Pattern::Literal(Literal::String(val)))
+            }
+            Some(Token::Boolean(val)) => {
+                let val = *val;
+                self.advance();
+                Ok(Pattern::Literal(Literal::Boolean(val)))
+            }
+            _ => Err(anyhow::anyhow!("Expected pattern")),
+        }
+    }
+    
+    fn parse_temporal_statement(&mut self) -> crate::Result<Statement> {
+        let token = self.current_token().unwrap().clone();
+        self.advance();
+        
+        match token {
+            Token::Every => {
+                self.consume_token(Token::LeftParen)?;
+                let duration = self.parse_expression()?;
+                self.consume_token(Token::RightParen)?;
+                self.consume_token(Token::LeftBrace)?;
+                let body = self.parse_statements()?;
+                self.consume_token(Token::RightBrace)?;
+                Ok(Statement::Every { duration, body })
+            }
+            Token::After => {
+                self.consume_token(Token::LeftParen)?;
+                let duration = self.parse_expression()?;
+                self.consume_token(Token::RightParen)?;
+                self.consume_token(Token::LeftBrace)?;
+                let body = self.parse_statements()?;
+                self.consume_token(Token::RightBrace)?;
+                Ok(Statement::After { duration, body })
+            }
+            Token::While => {
+                self.consume_token(Token::LeftParen)?;
+                let condition = self.parse_expression()?;
+                self.consume_token(Token::RightParen)?;
+                self.consume_token(Token::LeftBrace)?;
+                let body = self.parse_statements()?;
+                self.consume_token(Token::RightBrace)?;
+                Ok(Statement::While { condition, body })
+            }
+            _ => Err(anyhow::anyhow!("Unexpected temporal token")),
+        }
+    }
+    
     fn parse_expression(&mut self) -> crate::Result<Expression> {
-        self.parse_equality()
+        self.parse_pipe()
+    }
+    
+    fn parse_pipe(&mut self) -> crate::Result<Expression> {
+        let mut expr = self.parse_equality()?;
+        
+        while self.match_token(&Token::Pipe) {
+            self.advance();
+            let right = self.parse_equality()?;
+            expr = Expression::Pipe {
+                left: Box::new(expr),
+                right: Box::new(right),
+            };
+        }
+        
+        Ok(expr)
     }
     
     fn parse_equality(&mut self) -> crate::Result<Expression> {
@@ -250,19 +376,33 @@ impl<'a> Parser<'a> {
     fn parse_call(&mut self) -> crate::Result<Expression> {
         let mut expr = self.parse_primary()?;
         
-        while self.match_token(&Token::LeftParen) {
-            self.advance();
-            let args = self.parse_arguments()?;
-            self.consume_token(Token::RightParen)?;
-            
-            if let Expression::Identifier(name) = expr {
-                expr = Expression::FunctionCall {
-                    module: None,
-                    name,
-                    args,
+        loop {
+            if self.match_token(&Token::LeftParen) {
+                self.advance();
+                let args = self.parse_arguments()?;
+                self.consume_token(Token::RightParen)?;
+                
+                if let Expression::Identifier(name) = expr {
+                    expr = Expression::FunctionCall {
+                        module: None,
+                        name,
+                        args,
+                        named_args: HashMap::new(),
+                    };
+                } else {
+                    return Err(anyhow::anyhow!("Invalid function call"));
+                }
+            } else if self.match_token(&Token::LeftBracket) {
+                self.advance();
+                let index = self.parse_expression()?;
+                self.consume_token(Token::RightBracket)?;
+                
+                expr = Expression::ArrayAccess {
+                    array: Box::new(expr),
+                    index: Box::new(index),
                 };
             } else {
-                return Err(anyhow::anyhow!("Invalid function call"));
+                break;
             }
         }
         
@@ -291,6 +431,33 @@ impl<'a> Parser<'a> {
                 self.advance();
                 Ok(Expression::Literal(Literal::Boolean(b)))
             }
+            Some(Token::Unit(unit_string)) => {
+                let unit_string = unit_string.clone();
+                self.advance();
+                
+                // Parse "value.unit" format
+                let parts: Vec<&str> = unit_string.split('.').collect();
+                if parts.len() == 2 {
+                    let value_str = parts[0];
+                    let unit = parts[1].to_string();
+                    
+                    if let Ok(int_val) = value_str.parse::<i64>() {
+                        Ok(Expression::UnitValue {
+                            value: Box::new(Expression::Literal(Literal::Integer(int_val))),
+                            unit,
+                        })
+                    } else if let Ok(float_val) = value_str.parse::<f64>() {
+                        Ok(Expression::UnitValue {
+                            value: Box::new(Expression::Literal(Literal::Float(float_val))),
+                            unit,
+                        })
+                    } else {
+                        Err(anyhow::anyhow!("Invalid unit value: {}", unit_string))
+                    }
+                } else {
+                    Err(anyhow::anyhow!("Invalid unit format: {}", unit_string))
+                }
+            }
             Some(Token::Identifier(name)) => {
                 let name = name.clone();
                 self.advance();
@@ -303,13 +470,14 @@ impl<'a> Parser<'a> {
                         
                         if self.match_token(&Token::LeftParen) {
                             self.advance();
-                            let args = self.parse_arguments()?;
+                            let (args, named_args) = self.parse_function_arguments()?;
                             self.consume_token(Token::RightParen)?;
                             
                             Ok(Expression::FunctionCall {
                                 module: Some(name),
                                 name: func_name,
                                 args,
+                                named_args,
                             })
                         } else {
                             Ok(Expression::Identifier(format!("{}.{}", name, func_name)))
@@ -360,11 +528,33 @@ impl<'a> Parser<'a> {
         Ok(Expression::Block { fields })
     }
     
-    fn parse_arguments(&mut self) -> crate::Result<Vec<Expression>> {
+    fn parse_function_arguments(&mut self) -> crate::Result<(Vec<Expression>, HashMap<String, Expression>)> {
         let mut args = Vec::new();
+        let mut named_args = HashMap::new();
         
         while !self.match_token(&Token::RightParen) && !self.is_at_end() {
-            args.push(self.parse_expression()?);
+            // Check for named argument (identifier: expression)
+            if let Some(Token::Identifier(_)) = self.current_token() {
+                if self.peek_token(1) == Some(&Token::Colon) {
+                    // This is a named argument
+                    let name = match self.current_token() {
+                        Some(Token::Identifier(name)) => {
+                            let name = name.clone();
+                            self.advance();
+                            name
+                        }
+                        _ => return Err(anyhow::anyhow!("Expected identifier in named argument")),
+                    };
+                    
+                    self.consume_token(Token::Colon)?;
+                    let value = self.parse_expression()?;
+                    named_args.insert(name, value);
+                } else {
+                    args.push(self.parse_expression()?);
+                }
+            } else {
+                args.push(self.parse_expression()?);
+            }
             
             if self.match_token(&Token::Comma) {
                 self.advance();
@@ -373,6 +563,11 @@ impl<'a> Parser<'a> {
             }
         }
         
+        Ok((args, named_args))
+    }
+
+    fn parse_arguments(&mut self) -> crate::Result<Vec<Expression>> {
+        let (args, _) = self.parse_function_arguments()?;
         Ok(args)
     }
     

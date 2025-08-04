@@ -3,7 +3,7 @@ use std::collections::VecDeque;
 //use std::sync::{Arc, Mutex};
 
 pub struct AudioProcessor {
-    sample_rate: f32,
+    _sample_rate: f32,
     buffer_size: usize,
     input_buffer: VecDeque<f32>,
     output_buffer: VecDeque<f32>,
@@ -21,7 +21,7 @@ pub trait AudioEffect: Send {
 impl AudioProcessor {
     pub fn new(sample_rate: f32, buffer_size: usize) -> Self {
         Self {
-            sample_rate,
+            _sample_rate: sample_rate,
             buffer_size,
             input_buffer: VecDeque::with_capacity(buffer_size * 4),
             output_buffer: VecDeque::with_capacity(buffer_size * 4),
@@ -135,8 +135,8 @@ pub struct AudioAnalysis {
 }
 
 pub struct PitchDetector {
-    sample_rate: f32,
-    autocorr_buffer: Vec<f32>,
+    _sample_rate: f32,
+    _autocorr_buffer: Vec<f32>,
     min_freq: f32,
     max_freq: f32,
 }
@@ -144,8 +144,8 @@ pub struct PitchDetector {
 impl PitchDetector {
     pub fn new(sample_rate: f32) -> Self {
         Self {
-            sample_rate,
-            autocorr_buffer: vec![0.0; 2048],
+            _sample_rate: sample_rate,
+            _autocorr_buffer: vec![0.0; 2048],
             min_freq: 80.0,   // Minimum frequency to detect
             max_freq: 2000.0, // Maximum frequency to detect
         }
@@ -157,8 +157,8 @@ impl PitchDetector {
         }
         
         // Use autocorrelation for pitch detection
-        let min_period = (self.sample_rate / self.max_freq) as usize;
-        let max_period = (self.sample_rate / self.min_freq) as usize;
+        let min_period = (self._sample_rate / self.max_freq) as usize;
+        let max_period = (self._sample_rate / self.min_freq) as usize;
         
         if max_period >= samples.len() {
             return None;
@@ -189,7 +189,7 @@ impl PitchDetector {
         }
         
         if best_correlation > 0.5 && best_period > 0 {
-            Some(self.sample_rate / best_period as f32)
+            Some(self._sample_rate / best_period as f32)
         } else {
             None
         }

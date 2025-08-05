@@ -601,7 +601,7 @@ impl NativeBackend {
 
         // For now, generate a simple native stub
         // In a full implementation, this would use LLVM or similar
-        let bytecode = self.generate_native_code(ir, target, options)?;
+        let bytecode = self.generate_native_code(ir, target.clone(), options)?;
 
         let metadata = ArtifactMetadata {
             target: crate::compiler::CompilationTarget::Native(target),

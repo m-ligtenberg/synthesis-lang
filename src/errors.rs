@@ -359,6 +359,25 @@ impl From<serialport::Error> for SynthesisError {
     }
 }
 
+// Handle MIDI errors
+impl From<midir::InitError> for SynthesisError {
+    fn from(err: midir::InitError) -> Self {
+        SynthesisError::audio_device_error(format!("MIDI initialization error: {}", err))
+    }
+}
+
+impl From<midir::ConnectError<midir::MidiInput>> for SynthesisError {
+    fn from(err: midir::ConnectError<midir::MidiInput>) -> Self {
+        SynthesisError::audio_device_error(format!("MIDI input connection error: {}", err))
+    }
+}
+
+impl From<midir::ConnectError<midir::MidiOutput>> for SynthesisError {
+    fn from(err: midir::ConnectError<midir::MidiOutput>) -> Self {
+        SynthesisError::audio_device_error(format!("MIDI output connection error: {}", err))
+    }
+}
+
 // Never expose internal Rust errors to users
 impl From<anyhow::Error> for SynthesisError {
     fn from(err: anyhow::Error) -> Self {

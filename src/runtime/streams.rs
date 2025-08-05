@@ -333,7 +333,7 @@ impl StreamManager {
                 
                 // Use first non-None sample rate
                 if sample_rate.is_none() {
-                    sample_rate = stream_data.stream.sample_rate;
+                    sample_rate = stream_data.sample_rate;
                 }
             }
         }
@@ -348,15 +348,10 @@ impl StreamManager {
             }
         }
         
-        // Create merged stream
-        let merged_stream = Stream {
+        let merged_stream_data = StreamData {
             name: output_name.clone(),
             data_type: DataType::Audio, // Default to audio for mixed streams
             sample_rate,
-        };
-        
-        let merged_stream_data = StreamData {
-            stream: merged_stream,
             buffer: merged_buffer,
             position: 0,
             is_active: true,
@@ -373,9 +368,9 @@ impl StreamManager {
         if let Some(stream) = self.streams.get(name) {
             let stream_data = stream.lock().unwrap();
             Some(StreamInfo {
-                name: stream_data.stream.name.clone(),
-                data_type: stream_data.stream.data_type.clone(),
-                sample_rate: stream_data.stream.sample_rate,
+                name: stream_data.name.clone(),
+                data_type: stream_data.data_type.clone(),
+                sample_rate: stream_data.sample_rate,
                 buffer_size: stream_data.buffer.len(),
                 is_active: stream_data.is_active,
                 age: stream_data.timestamp.elapsed(),

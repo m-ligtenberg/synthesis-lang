@@ -213,6 +213,15 @@ impl IRGenerator {
                 Item::Loop(loop_block) => {
                     self.generate_loop(&mut main_function, loop_block)?;
                 }
+                Item::Function(_func_def) => {
+                    // TODO: Implement function definition handling
+                }
+                Item::Class(_class_def) => {
+                    // TODO: Implement class definition handling
+                }
+                Item::Struct(_struct_def) => {
+                    // TODO: Implement struct definition handling
+                }
             }
         }
 
@@ -259,6 +268,21 @@ impl IRGenerator {
             }
             Statement::While { .. } => {
                 // TODO: Implement while statement IR generation
+            }
+            Statement::For { .. } => {
+                // TODO: Implement for statement IR generation
+            }
+            Statement::Let { .. } => {
+                // TODO: Implement let statement IR generation
+            }
+            Statement::Return(_) => {
+                // TODO: Implement return statement IR generation
+            }
+            Statement::Break => {
+                // TODO: Implement break statement IR generation
+            }
+            Statement::Continue => {
+                // TODO: Implement continue statement IR generation
             }
         }
         Ok(())

@@ -314,6 +314,65 @@ impl Interpreter {
                     _ => Err(anyhow::anyhow!("Unit values must be numeric, got {:?}", val.type_name()).into()),
                 }
             }
+            Expression::ArrayLiteral(elements) => {
+                let mut values = Vec::new();
+                for element in elements {
+                    values.push(self.evaluate_expression(element)?);
+                }
+                Ok(Value::Array(values))
+            }
+            Expression::Range { start, end, inclusive: _ } => {
+                let start_val = self.evaluate_expression(start)?;
+                let end_val = self.evaluate_expression(end)?;
+                // For now, create a simple range representation
+                Ok(Value::String(format!("{}..{}", start_val, end_val)))
+            }
+            Expression::Lambda { parameters: _, body: _ } => {
+                // TODO: Implement lambda expressions
+                Ok(Value::String("<lambda>".to_string()))
+            }
+            Expression::MethodCall { object, method, args, named_args: _ } => {
+                let obj_val = self.evaluate_expression(object)?;
+                // For now, handle basic method calls
+                match method.as_str() {
+                    "map" | "push" | "length" => {
+                        // TODO: Implement method calls properly
+                        Ok(obj_val)
+                    }
+                    _ => Ok(Value::Null)
+                }
+            }
+            Expression::InterpolatedString(parts) => {
+                let mut result = String::new();
+                for part in parts {
+                    match part {
+                        crate::parser::ast::StringPart::Text(text) => {
+                            result.push_str(text);
+                        }
+                        crate::parser::ast::StringPart::Interpolation(expr) => {
+                            let val = self.evaluate_expression(expr)?;
+                            result.push_str(&val.to_string());
+                        }
+                    }
+                }
+                Ok(Value::String(result))
+            }
+            Expression::ConditionalExpression { condition, true_expr, false_expr } => {
+                let cond_val = self.evaluate_expression(condition)?;
+                if cond_val.is_truthy() {
+                    self.evaluate_expression(true_expr)
+                } else {
+                    self.evaluate_expression(false_expr)
+                }
+            }
+            Expression::MatchExpression { expr: _, arms: _ } => {
+                // TODO: Implement match expressions
+                Ok(Value::Null)
+            }
+            Expression::TypeCast { expr, target_type: _ } => {
+                // For now, just return the expression value
+                self.evaluate_expression(expr)
+            }
         }
     }
     
@@ -481,6 +540,20 @@ impl Interpreter {
             BinaryOperator::BiDirectionalPipe => {
                 // For bidirectional pipe, return the left operand
                 Ok(left.clone())
+            },
+            BinaryOperator::LogicalAnd => {
+                if left.is_truthy() {
+                    Ok(right.clone())
+                } else {
+                    Ok(left.clone())
+                }
+            },
+            BinaryOperator::LogicalOr => {
+                if left.is_truthy() {
+                    Ok(left.clone())
+                } else {
+                    Ok(right.clone())
+                }
             },
         }
     }

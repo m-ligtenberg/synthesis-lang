@@ -1,8 +1,10 @@
-use crate::runtime::types::{DataType, Value, Stream};
+use crate::runtime::types::{DataType, Value};
 use crate::errors::ErrorKind;
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::collections::{HashMap, VecDeque};
+use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Duration, Instant};
+use std::thread;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 #[derive(Debug, Clone)]
 pub struct StreamInfo {
@@ -17,8 +19,63 @@ pub struct StreamInfo {
 
 #[derive(Debug)]
 pub struct StreamManager {
-    streams: HashMap<String, Arc<Mutex<StreamData>>>,
+    streams: HashMap<String, Arc<RwLock<StreamData>>>,
     connections: HashMap<String, Vec<String>>,
+    processing_scheduler: Option<ProcessingScheduler>,
+    real_time_config: RealTimeConfig,
+    performance_metrics: Arc<Mutex<PerformanceMetrics>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct RealTimeConfig {
+    pub target_latency_ms: f32,
+    pub buffer_size: usize,
+    pub sample_rate: f32,
+    pub max_processing_time_us: u64,
+    pub enable_parallel_processing: bool,
+    pub gc_threshold: usize,
+}
+
+#[derive(Debug, Clone)]
+pub struct PerformanceMetrics {
+    pub processing_time_avg_us: f64,
+    pub processing_time_max_us: u64,
+    pub buffer_underruns: u64,
+    pub buffer_overruns: u64,
+    pub streams_processed: u64,
+    pub last_reset: Instant,
+}
+
+#[derive(Debug)]
+pub struct ProcessingScheduler {
+    task_queue: Arc<Mutex<VecDeque<StreamTask>>>,
+    worker_handles: Vec<thread::JoinHandle<()>>,
+    shutdown_flag: Arc<AtomicBool>,
+}
+
+#[derive(Debug, Clone)]
+pub struct StreamTask {
+    pub stream_name: String,
+    pub task_type: TaskType,
+    pub priority: TaskPriority,
+    pub timestamp: Instant,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum TaskType {
+    Process,
+    Connect,
+    Transform,
+    Merge,
+    Fork,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub enum TaskPriority {
+    Critical,  // Audio processing, <1ms
+    High,      // Graphics, <16ms
+    Medium,    // Control signals
+    Low,       // Cleanup, metadata
 }
 
 #[derive(Debug, Clone)]
@@ -26,12 +83,16 @@ pub struct StreamData {
     pub name: String,
     pub data_type: DataType,
     pub sample_rate: Option<f32>,
-    pub buffer: Vec<f32>,
+    pub buffer: VecDeque<f32>,
+    pub max_buffer_size: usize,
     pub position: usize,
     pub is_active: bool,
     pub timestamp: Instant,
     pub metadata: HashMap<String, Value>,
     pub processing_chain: Vec<StreamProcessor>,
+    pub latency_target: Duration,
+    pub last_processed: Option<Instant>,
+    pub processing_time_us: u64,
 }
 
 #[derive(Debug, Clone)]
@@ -55,26 +116,157 @@ pub enum StreamTransformFunction {
 
 impl StreamManager {
     pub fn new() -> Self {
+        Self::with_config(RealTimeConfig::default())
+    }
+    
+    pub fn with_config(config: RealTimeConfig) -> Self {
+        let performance_metrics = Arc::new(Mutex::new(PerformanceMetrics {
+            processing_time_avg_us: 0.0,
+            processing_time_max_us: 0,
+            buffer_underruns: 0,
+            buffer_overruns: 0,
+            streams_processed: 0,
+            last_reset: Instant::now(),
+        }));
+        
         Self {
             streams: HashMap::new(),
             connections: HashMap::new(),
+            processing_scheduler: None,
+            real_time_config: config,
+            performance_metrics,
+        }
+    }
+    
+    pub fn start_real_time_processing(&mut self) -> crate::Result<()> {
+        if self.processing_scheduler.is_some() {
+            return Ok(()); // Already started
+        }
+        
+        let shutdown_flag = Arc::new(AtomicBool::new(false));
+        let task_queue = Arc::new(Mutex::new(VecDeque::new()));
+        let mut worker_handles = Vec::new();
+        
+        // Create worker threads based on CPU count and config
+        let worker_count = if self.real_time_config.enable_parallel_processing {
+            std::thread::available_parallelism()
+                .map(|n| n.get())
+                .unwrap_or(4)
+                .min(8) // Cap at 8 threads
+        } else {
+            1
+        };
+        
+        for i in 0..worker_count {
+            let queue_clone = Arc::clone(&task_queue);
+            let metrics_clone = Arc::clone(&self.performance_metrics);
+            let config = self.real_time_config.clone();
+            let shutdown_flag_clone = Arc::clone(&shutdown_flag);
+            
+            let handle = thread::Builder::new()
+                .name(format!("synthesis-stream-worker-{}", i))
+                .spawn(move || {
+                    Self::worker_thread(queue_clone, metrics_clone, config, shutdown_flag_clone);
+                })
+                .map_err(|e| crate::SynthesisError::new(ErrorKind::AudioDeviceError, format!("Failed to spawn worker thread: {}", e)))?;
+            
+            worker_handles.push(handle);
+        }
+        
+        self.processing_scheduler = Some(ProcessingScheduler {
+            task_queue,
+            worker_handles,
+            shutdown_flag,
+        });
+        
+        Ok(())
+    }
+    
+    fn worker_thread(
+        task_queue: Arc<Mutex<VecDeque<StreamTask>>>,
+        metrics: Arc<Mutex<PerformanceMetrics>>,
+        config: RealTimeConfig,
+        shutdown_flag: Arc<AtomicBool>,
+    ) {
+        loop {
+            // Check for shutdown signal
+            if shutdown_flag.load(Ordering::Relaxed) {
+                break;
+            }
+            
+            let task = {
+                let mut queue = task_queue.lock().unwrap();
+                queue.pop_front()
+            };
+            
+            if let Some(task) = task {
+                let start_time = Instant::now();
+                
+                // Process task based on priority and type
+                Self::process_task(&task, &config);
+                
+                let processing_time = start_time.elapsed().as_micros() as u64;
+                
+                // Update metrics
+                {
+                    let mut metrics = metrics.lock().unwrap();
+                    metrics.streams_processed += 1;
+                    metrics.processing_time_max_us = metrics.processing_time_max_us.max(processing_time);
+                    
+                    // Update rolling average
+                    let alpha = 0.1; // Exponential moving average factor
+                    metrics.processing_time_avg_us = 
+                        alpha * processing_time as f64 + (1.0 - alpha) * metrics.processing_time_avg_us;
+                }
+                
+                // Check if we exceeded our time budget
+                if processing_time > config.max_processing_time_us {
+                    eprintln!("Warning: Stream processing exceeded time budget: {}μs > {}μs", 
+                             processing_time, config.max_processing_time_us);
+                }
+            } else {
+                // No tasks available - yield CPU briefly
+                thread::sleep(Duration::from_micros(10));
+            }
+        }
+    }
+    
+    fn process_task(task: &StreamTask, _config: &RealTimeConfig) {
+        // Task processing implementation would go here
+        // For now, just a placeholder that simulates work
+        match task.task_type {
+            TaskType::Process => {
+                // Simulate audio processing
+                thread::sleep(Duration::from_micros(50));
+            }
+            TaskType::Connect | TaskType::Transform | TaskType::Merge | TaskType::Fork => {
+                // Simulate lighter processing
+                thread::sleep(Duration::from_micros(10));
+            }
         }
     }
     
     pub fn create_stream(&mut self, name: String, data_type: DataType, sample_rate: Option<f32>) -> crate::Result<()> {
+        let latency_target = Duration::from_millis(self.real_time_config.target_latency_ms as u64);
+        let max_buffer_size = self.real_time_config.buffer_size;
+        
         let stream_data = StreamData {
             name: name.clone(),
             data_type,
             sample_rate,
-            buffer: Vec::new(),
+            buffer: VecDeque::with_capacity(max_buffer_size),
+            max_buffer_size,
             position: 0,
             is_active: false,
             timestamp: Instant::now(),
             metadata: HashMap::new(),
             processing_chain: Vec::new(),
+            latency_target,
+            last_processed: None,
+            processing_time_us: 0,
         };
         
-        self.streams.insert(name, Arc::new(Mutex::new(stream_data)));
+        self.streams.insert(name, Arc::new(RwLock::new(stream_data)));
         Ok(())
     }
     
@@ -95,15 +287,40 @@ impl StreamManager {
         Ok(())
     }
     
-    pub fn get_stream(&self, name: &str) -> Option<Arc<Mutex<StreamData>>> {
+    pub fn get_stream(&self, name: &str) -> Option<Arc<RwLock<StreamData>>> {
         self.streams.get(name).cloned()
     }
     
     pub fn write_to_stream(&self, name: &str, data: Vec<f32>) -> crate::Result<()> {
         if let Some(stream) = self.streams.get(name) {
-            let mut stream_data = stream.lock().unwrap();
-            stream_data.buffer.extend(data);
+            let mut stream_data = stream.write().unwrap();
+            
+            // Check for buffer overflow and handle gracefully
+            let available_space = stream_data.max_buffer_size.saturating_sub(stream_data.buffer.len());
+            if data.len() > available_space {
+                // Buffer overflow - update metrics and truncate data
+                {
+                    let mut metrics = self.performance_metrics.lock().unwrap();
+                    metrics.buffer_overruns += 1;
+                }
+                
+                // Keep the most recent data
+                let keep_count = available_space;
+                if keep_count > 0 {
+                    let start_idx = data.len() - keep_count;
+                    for &sample in &data[start_idx..] {
+                        stream_data.buffer.push_back(sample);
+                    }
+                }
+            } else {
+                // Normal case - add all data
+                for &sample in &data {
+                    stream_data.buffer.push_back(sample);
+                }
+            }
+            
             stream_data.is_active = true;
+            stream_data.timestamp = Instant::now();
             Ok(())
         } else {
             Err(crate::SynthesisError::new(crate::ErrorKind::UnknownModule, format!("Stream '{}' not found", name)))
@@ -112,14 +329,27 @@ impl StreamManager {
     
     pub fn read_from_stream(&self, name: &str, count: usize) -> crate::Result<Vec<f32>> {
         if let Some(stream) = self.streams.get(name) {
-            let mut stream_data = stream.lock().unwrap();
+            let mut stream_data = stream.write().unwrap();
             
             if stream_data.buffer.len() < count {
+                // Buffer underrun - update metrics and return zeros
+                {
+                    let mut metrics = self.performance_metrics.lock().unwrap();
+                    metrics.buffer_underruns += 1;
+                }
                 return Ok(vec![0.0; count]);
             }
             
-            let data = stream_data.buffer[..count].to_vec();
-            stream_data.buffer.drain(..count);
+            let mut data = Vec::with_capacity(count);
+            for _ in 0..count {
+                if let Some(sample) = stream_data.buffer.pop_front() {
+                    data.push(sample);
+                } else {
+                    data.push(0.0);
+                }
+            }
+            
+            stream_data.position += count;
             Ok(data)
         } else {
             Err(crate::SynthesisError::new(crate::ErrorKind::UnknownModule, format!("Stream '{}' not found", name)))
@@ -130,14 +360,16 @@ impl StreamManager {
         for (source_name, destinations) in &self.connections {
             if let Some(source_stream) = self.streams.get(source_name).cloned() {
                 let source_data = {
-                    let stream = source_stream.lock().unwrap();
-                    stream.buffer.clone()
+                    let stream = source_stream.read().unwrap();
+                    stream.buffer.iter().cloned().collect::<Vec<f32>>()
                 };
                 
                 for dest_name in destinations {
                     if let Some(dest_stream) = self.streams.get(dest_name) {
-                        let mut dest_stream_data = dest_stream.lock().unwrap();
-                        dest_stream_data.buffer.extend(&source_data);
+                        let mut dest_stream_data = dest_stream.write().unwrap();
+                        for &sample in &source_data {
+                            dest_stream_data.buffer.push_back(sample);
+                        }
                     }
                 }
             }
@@ -147,7 +379,7 @@ impl StreamManager {
     
     pub fn get_stream_value(&self, name: &str) -> Value {
         if let Some(stream) = self.streams.get(name) {
-            let stream_data = stream.lock().unwrap();
+            let stream_data = stream.read().unwrap();
             Value::Stream(crate::runtime::types::Stream {
                 name: stream_data.name.clone(),
                 data_type: stream_data.data_type.clone(),
@@ -162,7 +394,7 @@ impl StreamManager {
     
     pub fn add_processor(&mut self, stream_name: &str, processor: StreamProcessor) -> crate::Result<()> {
         if let Some(stream) = self.streams.get(stream_name) {
-            let mut stream_data = stream.lock().unwrap();
+            let mut stream_data = stream.write().unwrap();
             stream_data.processing_chain.push(processor);
             Ok(())
         } else {
@@ -172,7 +404,7 @@ impl StreamManager {
     
     pub fn set_metadata(&mut self, stream_name: &str, key: String, value: Value) -> crate::Result<()> {
         if let Some(stream) = self.streams.get(stream_name) {
-            let mut stream_data = stream.lock().unwrap();
+            let mut stream_data = stream.write().unwrap();
             stream_data.metadata.insert(key, value);
             Ok(())
         } else {
@@ -182,7 +414,7 @@ impl StreamManager {
     
     pub fn get_metadata(&self, stream_name: &str, key: &str) -> Option<Value> {
         if let Some(stream) = self.streams.get(stream_name) {
-            let stream_data = stream.lock().unwrap();
+            let stream_data = stream.read().unwrap();
             stream_data.metadata.get(key).cloned()
         } else {
             None
@@ -191,11 +423,11 @@ impl StreamManager {
     
     pub fn process_stream_data(&self, stream_name: &str) -> crate::Result<Vec<f32>> {
         if let Some(stream) = self.streams.get(stream_name) {
-            let mut stream_data = stream.lock().unwrap();
-            let mut data = stream_data.buffer.clone();
+            let mut stream_data = stream.write().unwrap();
+            let mut data = stream_data.buffer.iter().cloned().collect::<Vec<f32>>();
             
             // Apply processing chain
-            for processor in &stream_data.processing_chain {
+            for processor in &stream_data.processing_chain.clone() {
                 data = self.apply_processor(processor, data)?;
             }
             
@@ -291,12 +523,12 @@ impl StreamManager {
     
     pub fn fork_stream(&mut self, source_name: &str, new_name: String) -> crate::Result<()> {
         if let Some(source_stream) = self.streams.get(source_name).cloned() {
-            let source_data = source_stream.lock().unwrap();
+            let source_data = source_stream.read().unwrap();
             let mut new_stream_data = source_data.clone();
             new_stream_data.name = new_name.clone();
             new_stream_data.timestamp = Instant::now();
             
-            self.streams.insert(new_name, Arc::new(Mutex::new(new_stream_data)));
+            self.streams.insert(new_name, Arc::new(RwLock::new(new_stream_data)));
             Ok(())
         } else {
             Err(crate::SynthesisError::new(ErrorKind::UnknownModule, format!("Source stream '{}' not found", source_name)))
@@ -310,19 +542,20 @@ impl StreamManager {
         
         for stream_name in &stream_names {
             if let Some(stream) = self.streams.get(stream_name) {
-                let stream_data = stream.lock().unwrap();
+                let stream_data = stream.read().unwrap();
+                let buffer_data: Vec<f32> = stream_data.buffer.iter().cloned().collect();
                 
                 // Mix audio data
                 if merged_buffer.is_empty() {
-                    merged_buffer = stream_data.buffer.clone();
+                    merged_buffer = buffer_data;
                 } else {
-                    let min_len = merged_buffer.len().min(stream_data.buffer.len());
+                    let min_len = merged_buffer.len().min(buffer_data.len());
                     for i in 0..min_len {
-                        merged_buffer[i] += stream_data.buffer[i];
+                        merged_buffer[i] += buffer_data[i];
                     }
                     // Extend if one stream is longer
-                    if stream_data.buffer.len() > merged_buffer.len() {
-                        merged_buffer.extend_from_slice(&stream_data.buffer[merged_buffer.len()..]);
+                    if buffer_data.len() > merged_buffer.len() {
+                        merged_buffer.extend_from_slice(&buffer_data[merged_buffer.len()..]);
                     }
                 }
                 
@@ -352,21 +585,25 @@ impl StreamManager {
             name: output_name.clone(),
             data_type: DataType::Audio, // Default to audio for mixed streams
             sample_rate,
-            buffer: merged_buffer,
+            buffer: merged_buffer.into_iter().collect(),
+            max_buffer_size: self.real_time_config.buffer_size,
             position: 0,
             is_active: true,
             timestamp: Instant::now(),
             metadata: merged_metadata,
             processing_chain: Vec::new(),
+            latency_target: Duration::from_millis(self.real_time_config.target_latency_ms as u64),
+            last_processed: None,
+            processing_time_us: 0,
         };
         
-        self.streams.insert(output_name, Arc::new(Mutex::new(merged_stream_data)));
+        self.streams.insert(output_name, Arc::new(RwLock::new(merged_stream_data)));
         Ok(())
     }
     
     pub fn get_stream_info(&self, name: &str) -> Option<StreamInfo> {
         if let Some(stream) = self.streams.get(name) {
-            let stream_data = stream.lock().unwrap();
+            let stream_data = stream.read().unwrap();
             Some(StreamInfo {
                 name: stream_data.name.clone(),
                 data_type: stream_data.data_type.clone(),
@@ -382,8 +619,118 @@ impl StreamManager {
     }
 }
 
+impl Default for RealTimeConfig {
+    fn default() -> Self {
+        Self {
+            target_latency_ms: 1.0,  // 1ms target latency
+            buffer_size: 4096,       // 4KB buffer
+            sample_rate: 44100.0,    // CD quality
+            max_processing_time_us: 500, // 0.5ms max processing time
+            enable_parallel_processing: true,
+            gc_threshold: 1024,      // Trigger GC when buffers exceed this size
+        }
+    }
+}
+
 impl Default for StreamManager {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl StreamManager {
+    pub fn get_performance_metrics(&self) -> PerformanceMetrics {
+        self.performance_metrics.lock().unwrap().clone()
+    }
+    
+    pub fn reset_performance_metrics(&mut self) {
+        let mut metrics = self.performance_metrics.lock().unwrap();
+        *metrics = PerformanceMetrics {
+            processing_time_avg_us: 0.0,
+            processing_time_max_us: 0,
+            buffer_underruns: 0,
+            buffer_overruns: 0,
+            streams_processed: 0,
+            last_reset: Instant::now(),
+        };
+    }
+    
+    pub fn schedule_task(&mut self, task: StreamTask) -> crate::Result<()> {
+        if let Some(ref scheduler) = self.processing_scheduler {
+            let mut queue = scheduler.task_queue.lock().unwrap();
+            
+            // Insert based on priority (higher priority first)
+            let insert_pos = queue.iter()
+                .position(|existing_task| existing_task.priority > task.priority)
+                .unwrap_or(queue.len());
+                
+            queue.insert(insert_pos, task);
+            Ok(())
+        } else {
+            Err(crate::SynthesisError::new(ErrorKind::AudioDeviceError, 
+                "Real-time processing not started. Call start_real_time_processing() first".to_string()))
+        }
+    }
+    
+    pub fn optimize_stream_buffer(&mut self, stream_name: &str) -> crate::Result<()> {
+        if let Some(stream) = self.streams.get(stream_name) {
+            let mut stream_data = stream.write().unwrap();
+            
+            // Remove old data beyond the GC threshold
+            if stream_data.buffer.len() > self.real_time_config.gc_threshold {
+                let excess = stream_data.buffer.len() - self.real_time_config.gc_threshold;
+                for _ in 0..excess {
+                    stream_data.buffer.pop_front();
+                }
+                stream_data.position = stream_data.position.saturating_sub(excess);
+            }
+            
+            Ok(())
+        } else {
+            Err(crate::SynthesisError::new(ErrorKind::UnknownModule, 
+                format!("Stream '{}' not found", stream_name)))
+        }
+    }
+    
+    pub fn get_stream_latency(&self, stream_name: &str) -> Option<Duration> {
+        if let Some(stream) = self.streams.get(stream_name) {
+            let stream_data = stream.read().unwrap();
+            stream_data.last_processed.map(|last| last.elapsed())
+        } else {
+            None
+        }
+    }
+    
+    pub fn create_audio_stream(&mut self, name: String, sample_rate: f32) -> crate::Result<()> {
+        self.create_stream(name, DataType::Audio, Some(sample_rate))
+    }
+    
+    pub fn create_control_stream(&mut self, name: String) -> crate::Result<()> {
+        self.create_stream(name, DataType::Control, None)
+    }
+    
+    pub fn create_midi_stream(&mut self, name: String) -> crate::Result<()> {
+        self.create_stream(name, DataType::MIDI, None)
+    }
+    
+    pub fn shutdown(&mut self) -> crate::Result<()> {
+        if let Some(scheduler) = self.processing_scheduler.take() {
+            // Signal shutdown to all worker threads
+            scheduler.shutdown_flag.store(true, Ordering::Relaxed);
+            
+            // Wait for all threads to finish
+            for handle in scheduler.worker_handles {
+                handle.join().map_err(|_| crate::SynthesisError::new(
+                    ErrorKind::AudioDeviceError,
+                    "Failed to join worker thread".to_string()
+                ))?;
+            }
+        }
+        
+        // Clear all streams
+        self.streams.clear();
+        self.connections.clear();
+        
+        Ok(())
     }
 }

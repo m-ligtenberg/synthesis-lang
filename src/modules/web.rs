@@ -7,6 +7,6 @@ pub fn export_webapp(args: &[Value]) -> crate::Result<Value> {
         println!("Exporting webapp: {}", name);
         Ok(Value::Boolean(true))
     } else {
-        Err(anyhow::anyhow!("export_webapp() requires a name as first argument"))
+        Err(anyhow::anyhow!("export_webapp(.into() requires a name as first argument"))
     }
 }

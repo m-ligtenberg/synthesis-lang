@@ -67,17 +67,17 @@ pub fn starfield(args: &[Value]) -> crate::Result<Value> {
 
 pub fn rect(args: &[Value]) -> crate::Result<Value> {
     if args.len() < 4 {
-        return Err(anyhow::anyhow!("rect requires x, y, width, height arguments"));
+        return Err(anyhow::anyhow!("rect requires x, y, width, height arguments".into());
     }
     
     let x = args[0].as_number()
-        .ok_or_else(|| anyhow::anyhow!("rect x must be a number"))?;
+        .ok_or_else(|| anyhow::anyhow!("rect x must be a number".into())?;
     let y = args[1].as_number()
-        .ok_or_else(|| anyhow::anyhow!("rect y must be a number"))?;
+        .ok_or_else(|| anyhow::anyhow!("rect y must be a number".into())?;
     let width = args[2].as_number()
-        .ok_or_else(|| anyhow::anyhow!("rect width must be a number"))?;
+        .ok_or_else(|| anyhow::anyhow!("rect width must be a number".into())?;
     let height = args[3].as_number()
-        .ok_or_else(|| anyhow::anyhow!("rect height must be a number"))?;
+        .ok_or_else(|| anyhow::anyhow!("rect height must be a number".into())?;
     
     let color = args.get(4)
         .and_then(|v| v.as_number())
@@ -90,18 +90,18 @@ pub fn rect(args: &[Value]) -> crate::Result<Value> {
 
 pub fn circle(args: &[Value]) -> crate::Result<Value> {
     if args.len() < 3 {
-        return Err(anyhow::anyhow!("circle requires x, y, radius arguments"));
+        return Err(anyhow::anyhow!("circle requires x, y, radius arguments".into());
     }
     
     let x = args[0].as_number()
-        .ok_or_else(|| anyhow::anyhow!("circle x must be a number"))?;
+        .ok_or_else(|| anyhow::anyhow!("circle x must be a number".into())?;
     let y = args[1].as_number()
-        .ok_or_else(|| anyhow::anyhow!("circle y must be a number"))?;
+        .ok_or_else(|| anyhow::anyhow!("circle y must be a number".into())?;
     let radius = args[2].as_number()
-        .ok_or_else(|| anyhow::anyhow!("circle radius must be a number"))?;
+        .ok_or_else(|| anyhow::anyhow!("circle radius must be a number".into())?;
     
     if radius <= 0.0 {
-        return Err(anyhow::anyhow!("circle radius must be positive"));
+        return Err(anyhow::anyhow!("circle radius must be positive".into());
     }
     
     let color = args.get(3)
@@ -115,17 +115,17 @@ pub fn circle(args: &[Value]) -> crate::Result<Value> {
 
 pub fn line(args: &[Value]) -> crate::Result<Value> {
     if args.len() < 4 {
-        return Err(anyhow::anyhow!("line requires x1, y1, x2, y2 arguments"));
+        return Err(anyhow::anyhow!("line requires x1, y1, x2, y2 arguments".into());
     }
     
     let x1 = args[0].as_number()
-        .ok_or_else(|| anyhow::anyhow!("line x1 must be a number"))?;
+        .ok_or_else(|| anyhow::anyhow!("line x1 must be a number".into())?;
     let y1 = args[1].as_number()
-        .ok_or_else(|| anyhow::anyhow!("line y1 must be a number"))?;
+        .ok_or_else(|| anyhow::anyhow!("line y1 must be a number".into())?;
     let x2 = args[2].as_number()
-        .ok_or_else(|| anyhow::anyhow!("line x2 must be a number"))?;
+        .ok_or_else(|| anyhow::anyhow!("line x2 must be a number".into())?;
     let y2 = args[3].as_number()
-        .ok_or_else(|| anyhow::anyhow!("line y2 must be a number"))?;
+        .ok_or_else(|| anyhow::anyhow!("line y2 must be a number".into())?;
     
     let color = args.get(4)
         .and_then(|v| v.as_number())
@@ -138,18 +138,18 @@ pub fn line(args: &[Value]) -> crate::Result<Value> {
 
 pub fn text(args: &[Value]) -> crate::Result<Value> {
     if args.len() < 3 {
-        return Err(anyhow::anyhow!("text requires text, x, y arguments"));
+        return Err(anyhow::anyhow!("text requires text, x, y arguments".into());
     }
     
     let text_content = match &args[0] {
         Value::String(s) => s.clone(),
-        _ => return Err(anyhow::anyhow!("text content must be a string")),
+        _ => return Err(anyhow::anyhow!("text content must be a string".into()),
     };
     
     let x = args[1].as_number()
-        .ok_or_else(|| anyhow::anyhow!("text x must be a number"))?;
+        .ok_or_else(|| anyhow::anyhow!("text x must be a number".into())?;
     let y = args[2].as_number()
-        .ok_or_else(|| anyhow::anyhow!("text y must be a number"))?;
+        .ok_or_else(|| anyhow::anyhow!("text y must be a number".into())?;
     
     let color = args.get(3)
         .and_then(|v| v.as_number())
@@ -168,12 +168,12 @@ pub fn text(args: &[Value]) -> crate::Result<Value> {
 
 pub fn particle_system(args: &[Value]) -> crate::Result<Value> {
     if args.is_empty() {
-        return Err(anyhow::anyhow!("particle_system requires a name argument"));
+        return Err(anyhow::anyhow!("particle_system requires a name argument".into());
     }
     
     let name = match &args[0] {
         Value::String(s) => s.clone(),
-        _ => return Err(anyhow::anyhow!("particle system name must be a string")),
+        _ => return Err(anyhow::anyhow!("particle system name must be a string".into()),
     };
     
     println!("Graphics.particle_system: Creating '{}' particle system", name);

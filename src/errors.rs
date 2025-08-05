@@ -378,6 +378,12 @@ impl From<midir::ConnectError<midir::MidiOutput>> for SynthesisError {
     }
 }
 
+impl From<midir::SendError> for SynthesisError {
+    fn from(err: midir::SendError) -> Self {
+        SynthesisError::audio_device_error(format!("MIDI send error: {}", err))
+    }
+}
+
 // Never expose internal Rust errors to users
 impl From<anyhow::Error> for SynthesisError {
     fn from(err: anyhow::Error) -> Self {

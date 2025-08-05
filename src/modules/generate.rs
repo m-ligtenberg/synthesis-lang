@@ -259,12 +259,12 @@ pub fn l_system(_args: &[Value]) -> crate::Result<Value> {
 
 pub fn perlin_noise(args: &[Value]) -> crate::Result<Value> {
     if args.len() < 3 {
-        return Err(anyhow::anyhow!("perlin_noise requires 3 arguments (x, y, z)"));
+        return Err(anyhow::anyhow!("perlin_noise requires 3 arguments (x, y, z.into()").into());
     }
     
-    let x = args[0].as_number().ok_or_else(|| anyhow::anyhow!("First argument must be a number"))?;
-    let y = args[1].as_number().ok_or_else(|| anyhow::anyhow!("Second argument must be a number"))?;
-    let z = args[2].as_number().ok_or_else(|| anyhow::anyhow!("Third argument must be a number"))?;
+    let x = args[0].as_number().ok_or_else(|| anyhow::anyhow!("First argument must be a number".into())?;
+    let y = args[1].as_number().ok_or_else(|| anyhow::anyhow!("Second argument must be a number".into())?;
+    let z = args[2].as_number().ok_or_else(|| anyhow::anyhow!("Third argument must be a number".into())?;
     
     let noise = PerlinNoise::new(0); // Default seed
     let value = noise.noise(x, y, z);
@@ -274,17 +274,17 @@ pub fn perlin_noise(args: &[Value]) -> crate::Result<Value> {
 
 pub fn euclidean(args: &[Value]) -> crate::Result<Value> {
     if args.len() < 2 {
-        return Err(anyhow::anyhow!("euclidean requires 2 arguments (hits, steps)"));
+        return Err(anyhow::anyhow!("euclidean requires 2 arguments (hits, steps.into()").into());
     }
     
     let hits = match &args[0] {
         Value::Integer(n) => *n as usize,
-        _ => return Err(anyhow::anyhow!("First argument must be an integer")),
+        _ => return Err(anyhow::anyhow!("First argument must be an integer".into()),
     };
     
     let steps = match &args[1] {
         Value::Integer(n) => *n as usize,
-        _ => return Err(anyhow::anyhow!("Second argument must be an integer")),
+        _ => return Err(anyhow::anyhow!("Second argument must be an integer".into()),
     };
     
     let rhythm = EuclideanRhythm::new(hits, steps);

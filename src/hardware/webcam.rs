@@ -65,7 +65,7 @@ impl WebcamManager {
         let mut capture = VideoCapture::new(device_index, CAP_ANY)?;
         
         if !capture.is_opened()? {
-            return Err(anyhow::anyhow!("Failed to open webcam device {}", device_index));
+            return Err(anyhow::anyhow!("Failed to open webcam device {}", device_index.into());
         }
         
         // Set capture properties

@@ -52,7 +52,7 @@ fn main() -> synthesis::Result<()> {
     println!("Parsing {}...", filename);
     
     let (_, tokens) = lexer::tokenize(&source_code)
-        .map_err(|e| anyhow::anyhow!("Lexer error: {:?}", e))?;
+        .map_err(|e| anyhow::anyhow!("Lexer error: {:?}", e.into())?;
     
     let mut parser = Parser::new(&tokens);
     let program = parser.parse()?;

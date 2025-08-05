@@ -12,7 +12,7 @@ pub fn mic_input(_args: &[Value]) -> crate::Result<Value> {
 
 pub fn analyze_fft(args: &[Value]) -> crate::Result<Value> {
     if args.is_empty() {
-        return Err(anyhow::anyhow!("analyze_fft requires at least 1 argument (audio stream)"));
+        return Err(anyhow::anyhow!("analyze_fft requires at least 1 argument (audio stream.into()").into());
     }
     
     let bands = args.get(1)
@@ -20,7 +20,7 @@ pub fn analyze_fft(args: &[Value]) -> crate::Result<Value> {
         .unwrap_or(8.0) as usize;
     
     if bands == 0 || bands > 1024 {
-        return Err(anyhow::anyhow!("FFT bands must be between 1 and 1024"));
+        return Err(anyhow::anyhow!("FFT bands must be between 1 and 1024".into());
     }
     
     // Generate mock FFT data with some variation over time
@@ -42,7 +42,7 @@ pub fn analyze_fft(args: &[Value]) -> crate::Result<Value> {
 
 pub fn beat_detect(args: &[Value]) -> crate::Result<Value> {
     if args.is_empty() {
-        return Err(anyhow::anyhow!("beat_detect requires an audio stream argument"));
+        return Err(anyhow::anyhow!("beat_detect requires an audio stream argument".into());
     }
     
     // Simple mock beat detection based on time
@@ -60,12 +60,12 @@ pub fn beat_detect(args: &[Value]) -> crate::Result<Value> {
 
 pub fn load_file(args: &[Value]) -> crate::Result<Value> {
     if args.is_empty() {
-        return Err(anyhow::anyhow!("load_file requires a filename argument"));
+        return Err(anyhow::anyhow!("load_file requires a filename argument".into());
     }
     
     let filename = match &args[0] {
         Value::String(s) => s,
-        _ => return Err(anyhow::anyhow!("load_file requires a string filename")),
+        _ => return Err(anyhow::anyhow!("load_file requires a string filename".into()),
     };
     
     // Mock audio file loading
@@ -80,7 +80,7 @@ pub fn load_file(args: &[Value]) -> crate::Result<Value> {
 
 pub fn play(args: &[Value]) -> crate::Result<Value> {
     if args.is_empty() {
-        return Err(anyhow::anyhow!("play requires an audio stream argument"));
+        return Err(anyhow::anyhow!("play requires an audio stream argument".into());
     }
     
     match &args[0] {
@@ -88,20 +88,20 @@ pub fn play(args: &[Value]) -> crate::Result<Value> {
             println!("Playing audio stream: {}", stream.name);
             Ok(Value::Boolean(true))
         }
-        _ => Err(anyhow::anyhow!("play requires an audio stream")),
+        _ => Err(anyhow::anyhow!("play requires an audio stream".into()),
     }
 }
 
 pub fn volume(args: &[Value]) -> crate::Result<Value> {
     if args.len() < 2 {
-        return Err(anyhow::anyhow!("volume requires audio stream and volume level"));
+        return Err(anyhow::anyhow!("volume requires audio stream and volume level".into());
     }
     
     let volume_level = args[1].as_number()
-        .ok_or_else(|| anyhow::anyhow!("volume level must be a number"))?;
+        .ok_or_else(|| anyhow::anyhow!("volume level must be a number".into())?;
     
     if volume_level < 0.0 || volume_level > 1.0 {
-        return Err(anyhow::anyhow!("volume level must be between 0.0 and 1.0"));
+        return Err(anyhow::anyhow!("volume level must be between 0.0 and 1.0".into());
     }
     
     match &args[0] {
@@ -109,7 +109,7 @@ pub fn volume(args: &[Value]) -> crate::Result<Value> {
             println!("Setting volume of {} to {:.2}", stream.name, volume_level);
             Ok(args[0].clone()) // Return the stream
         }
-        _ => Err(anyhow::anyhow!("volume requires an audio stream")),
+        _ => Err(anyhow::anyhow!("volume requires an audio stream".into()),
     }
 }
 
@@ -117,7 +117,7 @@ pub fn volume(args: &[Value]) -> crate::Result<Value> {
 
 pub fn classify_beat(args: &[Value]) -> crate::Result<Value> {
     if args.is_empty() {
-        return Err(anyhow::anyhow!("classify_beat requires audio data argument"));
+        return Err(anyhow::anyhow!("classify_beat requires audio data argument".into());
     }
     
     match &args[0] {
@@ -160,13 +160,13 @@ pub fn classify_beat(args: &[Value]) -> crate::Result<Value> {
             println!("Audio.classify_beat: Energy={:.3}, classified as {}", energy, beat_type);
             Ok(Value::String(beat_type.to_string()))
         }
-        _ => Err(anyhow::anyhow!("classify_beat requires audio stream or data array")),
+        _ => Err(anyhow::anyhow!("classify_beat requires audio stream or data array".into()),
     }
 }
 
 pub fn classify_mood(args: &[Value]) -> crate::Result<Value> {
     if args.is_empty() {
-        return Err(anyhow::anyhow!("classify_mood requires audio data argument"));
+        return Err(anyhow::anyhow!("classify_mood requires audio data argument".into());
     }
     
     match &args[0] {
@@ -222,13 +222,13 @@ pub fn classify_mood(args: &[Value]) -> crate::Result<Value> {
                      positive_energy, variance, mood);
             Ok(Value::String(mood.to_string()))
         }
-        _ => Err(anyhow::anyhow!("classify_mood requires audio stream or data array")),
+        _ => Err(anyhow::anyhow!("classify_mood requires audio stream or data array".into()),
     }
 }
 
 pub fn onset_detection(args: &[Value]) -> crate::Result<Value> {
     if args.is_empty() {
-        return Err(anyhow::anyhow!("onset_detection requires audio data"));
+        return Err(anyhow::anyhow!("onset_detection requires audio data".into());
     }
     
     let threshold = args.get(1)
@@ -254,13 +254,13 @@ pub fn onset_detection(args: &[Value]) -> crate::Result<Value> {
                      onsets.len(), threshold);
             Ok(Value::Array(onsets))
         }
-        _ => Err(anyhow::anyhow!("onset_detection requires audio data array")),
+        _ => Err(anyhow::anyhow!("onset_detection requires audio data array".into()),
     }
 }
 
 pub fn tempo_detection(args: &[Value]) -> crate::Result<Value> {
     if args.is_empty() {
-        return Err(anyhow::anyhow!("tempo_detection requires audio data"));
+        return Err(anyhow::anyhow!("tempo_detection requires audio data".into());
     }
     
     match &args[0] {
@@ -288,13 +288,13 @@ pub fn tempo_detection(args: &[Value]) -> crate::Result<Value> {
                      peaks, bpm);
             Ok(Value::Float(bpm))
         }
-        _ => Err(anyhow::anyhow!("tempo_detection requires audio data array")),
+        _ => Err(anyhow::anyhow!("tempo_detection requires audio data array".into()),
     }
 }
 
 pub fn spectral_centroid(args: &[Value]) -> crate::Result<Value> {
     if args.is_empty() {
-        return Err(anyhow::anyhow!("spectral_centroid requires audio data"));
+        return Err(anyhow::anyhow!("spectral_centroid requires audio data".into());
     }
     
     match &args[0] {
@@ -322,6 +322,6 @@ pub fn spectral_centroid(args: &[Value]) -> crate::Result<Value> {
             println!("Audio.spectral_centroid: {:.2} (brightness indicator)", centroid);
             Ok(Value::Float(centroid))
         }
-        _ => Err(anyhow::anyhow!("spectral_centroid requires audio data array")),
+        _ => Err(anyhow::anyhow!("spectral_centroid requires audio data array".into()),
     }
 }

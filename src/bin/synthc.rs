@@ -75,7 +75,7 @@ fn main() -> Result<()> {
                 }
                 i += 1;
                 options.stream_buffer_size = args[i].parse()
-                    .map_err(|_| anyhow::anyhow!("Invalid buffer size: {}", args[i]))?;
+                    .map_err(|_| anyhow::anyhow!("Invalid buffer size: {}", args[i].into())?;
             }
             "--no-realtime" => {
                 options.real_time_priority = false;
@@ -117,7 +117,7 @@ fn main() -> Result<()> {
             let input_stem = Path::new(&input_path)
                 .file_stem()
                 .and_then(|s| s.to_str())
-                .ok_or_else(|| anyhow::anyhow!("Invalid input filename"))?;
+                .ok_or_else(|| anyhow::anyhow!("Invalid input filename".into())?;
             
             match options.target {
                 CompilationTarget::WebAssembly => format!("{}.wasm", input_stem),
@@ -153,7 +153,7 @@ fn main() -> Result<()> {
     // Parse the source code
     println!("Parsing...");
     let (_, tokens) = lexer::tokenize(&source_code)
-        .map_err(|e| anyhow::anyhow!("Lexer error: {:?}", e))?;
+        .map_err(|e| anyhow::anyhow!("Lexer error: {:?}", e.into())?;
 
     let mut parser = Parser::new(&tokens);
     let program = parser.parse()?;
@@ -166,7 +166,7 @@ fn main() -> Result<()> {
     // Write output
     println!("Writing output...");
     fs::write(&output_path, &artifact.bytecode)
-        .map_err(|e| anyhow::anyhow!("Failed to write output file: {}", e))?;
+        .map_err(|e| anyhow::anyhow!("Failed to write output file: {}", e.into())?;
 
     // Print compilation summary
     println!("\nCompilation successful!");
@@ -245,7 +245,7 @@ fn parse_target(target_str: &str) -> synthesis::Result<CompilationTarget> {
         "native-macos" => Ok(CompilationTarget::Native(NativeTarget::X86_64MacOS)),
         "native-macos-arm64" => Ok(CompilationTarget::Native(NativeTarget::AArch64MacOS)),
         "native-linux-arm64" => Ok(CompilationTarget::Native(NativeTarget::AArch64Linux)),
-        _ => Err(anyhow::anyhow!("Unsupported target: {}", target_str)),
+        _ => Err(anyhow::anyhow!("Unsupported target: {}", target_str.into()),
     }
 }
 
@@ -255,6 +255,6 @@ fn parse_optimization_level(level_str: &str) -> synthesis::Result<OptimizationLe
         "basic" | "1" => Ok(OptimizationLevel::Basic),
         "aggressive" | "2" => Ok(OptimizationLevel::Aggressive),
         "creative" | "3" => Ok(OptimizationLevel::Creative),
-        _ => Err(anyhow::anyhow!("Invalid optimization level: {}", level_str)),
+        _ => Err(anyhow::anyhow!("Invalid optimization level: {}", level_str.into()),
     }
 }

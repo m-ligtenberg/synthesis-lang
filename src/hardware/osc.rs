@@ -203,7 +203,7 @@ impl OscClient {
     pub fn connect<A: ToSocketAddrs>(&mut self, target: A) -> crate::Result<()> {
         let socket = UdpSocket::bind("0.0.0.0:0")?;
         let target_addr = target.to_socket_addrs()?.next()
-            .ok_or_else(|| anyhow::anyhow!("Invalid target address"))?;
+            .ok_or_else(|| anyhow::anyhow!("Invalid target address".into())?;
         
         self.socket = Some(socket);
         self.target_addr = Some(target_addr);
@@ -224,7 +224,7 @@ impl OscClient {
             
             socket.send_to(&encoded, target_addr)?;
         } else {
-            return Err(anyhow::anyhow!("OSC client not connected").into());
+            return Err(anyhow::anyhow!("OSC client not connected".into());
         }
         
         Ok(())

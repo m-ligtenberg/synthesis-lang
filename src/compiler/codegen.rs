@@ -278,7 +278,7 @@ impl WasmCodeGen {
                         }
                         wasm_instructions.push(WasmInstruction::Call(3)); // graphics_plasma import
                     }
-                    _ => return Err(anyhow::anyhow!("Unsupported graphics primitive: {}", primitive).into()),
+                    _ => return Err(anyhow::anyhow!("Unsupported graphics primitive: {}", primitive.into()),
                 }
             }
 
@@ -290,7 +290,7 @@ impl WasmCodeGen {
             }
 
             _ => {
-                return Err(anyhow::anyhow!("Unsupported instruction for WebAssembly generation: {:?}", instruction).into());
+                return Err(anyhow::anyhow!("Unsupported instruction for WebAssembly generation: {:?}", instruction.into());
             }
         }
 
@@ -308,7 +308,7 @@ impl WasmCodeGen {
                     IRConstant::Integer(i) => wasm_instructions.push(WasmInstruction::I32Const(*i as i32)),
                     IRConstant::Float(f) => wasm_instructions.push(WasmInstruction::F64Const(*f)),
                     IRConstant::Boolean(b) => wasm_instructions.push(WasmInstruction::I32Const(if *b { 1 } else { 0 })),
-                    _ => return Err(anyhow::anyhow!("Unsupported constant type").into()),
+                    _ => return Err(anyhow::anyhow!("Unsupported constant type".into()),
                 }
             }
             IRValue::Register(reg) => {
@@ -316,7 +316,7 @@ impl WasmCodeGen {
                 wasm_instructions.push(WasmInstruction::LocalGet(reg.id as u32));
             }
             IRValue::Global(_name) => {
-                return Err(anyhow::anyhow!("Global variables not yet supported").into());
+                return Err(anyhow::anyhow!("Global variables not yet supported".into());
             }
         }
         Ok(())
@@ -496,7 +496,7 @@ impl RegisterAllocator {
                 self.virtual_registers.insert(virtual_reg, self.free_registers[i].clone());
             } else {
                 // Would need to spill to memory in a real implementation
-                return Err(anyhow::anyhow!("Not enough physical registers").into());
+                return Err(anyhow::anyhow!("Not enough physical registers".into());
             }
         }
 

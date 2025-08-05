@@ -35,7 +35,7 @@ impl Renderer {
                 force_fallback_adapter: false,
             })
             .await
-            .ok_or_else(|| anyhow::anyhow!("Failed to find an appropriate adapter"))?;
+            .ok_or_else(|| anyhow::anyhow!("Failed to find an appropriate adapter".into())?;
 
         let (device, queue) = adapter
             .request_device(

@@ -185,7 +185,7 @@ impl Interpreter {
                 Ok(self.variables.get(name)
                     .cloned()
                     .or_else(|| Some(self.stream_manager.get_stream_value(name)))
-                    .ok_or_else(|| anyhow::anyhow!("Undefined variable: {}", name))?)
+                    .ok_or_else(|| anyhow::anyhow!("Undefined variable: {}", name.into())?)
             }
             Expression::FunctionCall { module, name, args, named_args } => {
                 self.evaluate_function_call(module.as_ref(), name, args, named_args)
@@ -213,10 +213,10 @@ impl Interpreter {
                         if idx < arr.len() {
                             Ok(arr[idx].clone())
                         } else {
-                            Err(anyhow::anyhow!("Array index {} out of bounds (length {})", idx, arr.len()).into())
+                            Err(anyhow::anyhow!("Array index {} out of bounds (length {}.into()", idx, arr.len()).into())
                         }
                     }
-                    _ => Err(anyhow::anyhow!("Cannot index {:?} with {:?}", array_val.type_name(), index_val.type_name()).into())
+                    _ => Err(anyhow::anyhow!("Cannot index {:?} with {:?}", array_val.type_name(.into(), index_val.type_name()).into())
                 }
             }
             Expression::Pipe { left, right } => {
@@ -249,7 +249,7 @@ impl Interpreter {
                         
                         Ok(left_val)
                     }
-                    _ => Err(anyhow::anyhow!("Bidirectional pipe requires two streams").into())
+                    _ => Err(anyhow::anyhow!("Bidirectional pipe requires two streams".into())
                 }
             }
             Expression::StreamBranch { stream, count } => {
@@ -267,7 +267,7 @@ impl Interpreter {
                         
                         Ok(Value::Stream(stream))
                     }
-                    _ => Err(anyhow::anyhow!("Cannot branch non-stream value").into())
+                    _ => Err(anyhow::anyhow!("Cannot branch non-stream value".into())
                 }
             }
             Expression::StreamMerge { streams, output_name } => {
@@ -277,7 +277,7 @@ impl Interpreter {
                     let stream_val = self.evaluate_expression(stream_expr)?;
                     match stream_val {
                         Value::Stream(stream) => stream_names.push(stream.name),
-                        _ => return Err(anyhow::anyhow!("Cannot merge non-stream value").into())
+                        _ => return Err(anyhow::anyhow!("Cannot merge non-stream value".into())
                     }
                 }
                 
@@ -291,7 +291,7 @@ impl Interpreter {
                         sample_rate: Some(44100.0),
                     }))
                 } else {
-                    Err(anyhow::anyhow!("No streams to merge").into())
+                    Err(anyhow::anyhow!("No streams to merge".into())
                 }
             }
             Expression::UnitValue { value, unit } => {
@@ -301,17 +301,17 @@ impl Interpreter {
                         if let Some(unit_val) = crate::runtime::units::UnitValue::from_string(n as f64, unit) {
                             Ok(Value::UnitValue(unit_val))
                         } else {
-                            Err(anyhow::anyhow!("Unknown unit: {}", unit).into())
+                            Err(anyhow::anyhow!("Unknown unit: {}", unit.into())
                         }
                     }
                     Value::Float(f) => {
                         if let Some(unit_val) = crate::runtime::units::UnitValue::from_string(f, unit) {
                             Ok(Value::UnitValue(unit_val))
                         } else {
-                            Err(anyhow::anyhow!("Unknown unit: {}", unit).into())
+                            Err(anyhow::anyhow!("Unknown unit: {}", unit.into())
                         }
                     }
-                    _ => Err(anyhow::anyhow!("Unit values must be numeric, got {:?}", val.type_name()).into()),
+                    _ => Err(anyhow::anyhow!("Unit values must be numeric, got {:?}", val.type_name(.into()).into()),
                 }
             }
             Expression::ArrayLiteral(elements) => {
@@ -403,10 +403,10 @@ impl Interpreter {
                     return (function.callback)(&arg_values);
                 }
             }
-            return Err(anyhow::anyhow!("Function {}.{} not found", module_name, name).into());
+            return Err(anyhow::anyhow!("Function {}.{} not found", module_name, name.into());
         }
         
-        Err(anyhow::anyhow!("Function {} not found", name).into())
+        Err(anyhow::anyhow!("Function {} not found", name.into())
     }
     
     fn evaluate_binary_op(
@@ -426,10 +426,10 @@ impl Interpreter {
                     if let Some(result) = a.add(b) {
                         Ok(Value::UnitValue(result))
                     } else {
-                        Err(anyhow::anyhow!("Cannot add incompatible units: {} and {}", a.unit.to_string(), b.unit.to_string()).into())
+                        Err(anyhow::anyhow!("Cannot add incompatible units: {} and {}", a.unit.to_string(.into(), b.unit.to_string()).into())
                     }
                 }
-                _ => Err(anyhow::anyhow!("Cannot add {:?} and {:?}", left.type_name(), right.type_name()).into()),
+                _ => Err(anyhow::anyhow!("Cannot add {:?} and {:?}", left.type_name(.into(), right.type_name()).into()),
             },
             BinaryOperator::Subtract => match (left, right) {
                 (Value::Integer(a), Value::Integer(b)) => Ok(Value::Integer(a - b)),
@@ -440,10 +440,10 @@ impl Interpreter {
                     if let Some(result) = a.subtract(b) {
                         Ok(Value::UnitValue(result))
                     } else {
-                        Err(anyhow::anyhow!("Cannot subtract incompatible units: {} and {}", a.unit.to_string(), b.unit.to_string()).into())
+                        Err(anyhow::anyhow!("Cannot subtract incompatible units: {} and {}", a.unit.to_string(.into(), b.unit.to_string()).into())
                     }
                 }
-                _ => Err(anyhow::anyhow!("Cannot subtract {:?} and {:?}", left.type_name(), right.type_name()).into()),
+                _ => Err(anyhow::anyhow!("Cannot subtract {:?} and {:?}", left.type_name(.into(), right.type_name()).into()),
             },
             BinaryOperator::Multiply => match (left, right) {
                 (Value::Integer(a), Value::Integer(b)) => Ok(Value::Integer(a * b)),
@@ -454,54 +454,54 @@ impl Interpreter {
                 (Value::UnitValue(a), Value::Float(b)) => Ok(Value::UnitValue(a.multiply(*b))),
                 (Value::Integer(a), Value::UnitValue(b)) => Ok(Value::UnitValue(b.multiply(*a as f64))),
                 (Value::Float(a), Value::UnitValue(b)) => Ok(Value::UnitValue(b.multiply(*a))),
-                _ => Err(anyhow::anyhow!("Cannot multiply {:?} and {:?}", left.type_name(), right.type_name()).into()),
+                _ => Err(anyhow::anyhow!("Cannot multiply {:?} and {:?}", left.type_name(.into(), right.type_name()).into()),
             },
             BinaryOperator::Divide => match (left, right) {
                 (Value::Integer(a), Value::Integer(b)) => {
                     if *b == 0 {
-                        return Err(anyhow::anyhow!("Division by zero").into());
+                        return Err(anyhow::anyhow!("Division by zero".into());
                     }
                     Ok(Value::Float(*a as f64 / *b as f64))
                 },
                 (Value::Float(a), Value::Float(b)) => {
                     if *b == 0.0 {
-                        return Err(anyhow::anyhow!("Division by zero").into());
+                        return Err(anyhow::anyhow!("Division by zero".into());
                     }
                     Ok(Value::Float(a / b))
                 },
                 (Value::Integer(a), Value::Float(b)) => {
                     if *b == 0.0 {
-                        return Err(anyhow::anyhow!("Division by zero").into());
+                        return Err(anyhow::anyhow!("Division by zero".into());
                     }
                     Ok(Value::Float(*a as f64 / b))
                 },
                 (Value::Float(a), Value::Integer(b)) => {
                     if *b == 0 {
-                        return Err(anyhow::anyhow!("Division by zero").into());
+                        return Err(anyhow::anyhow!("Division by zero".into());
                     }
                     Ok(Value::Float(a / *b as f64))
                 },
                 (Value::UnitValue(a), Value::Integer(b)) => {
                     if *b == 0 {
-                        return Err(anyhow::anyhow!("Division by zero").into());
+                        return Err(anyhow::anyhow!("Division by zero".into());
                     }
                     if let Some(result) = a.divide(*b as f64) {
                         Ok(Value::UnitValue(result))
                     } else {
-                        Err(anyhow::anyhow!("Division by zero").into())
+                        Err(anyhow::anyhow!("Division by zero".into())
                     }
                 },
                 (Value::UnitValue(a), Value::Float(b)) => {
                     if *b == 0.0 {
-                        return Err(anyhow::anyhow!("Division by zero").into());
+                        return Err(anyhow::anyhow!("Division by zero".into());
                     }
                     if let Some(result) = a.divide(*b) {
                         Ok(Value::UnitValue(result))
                     } else {
-                        Err(anyhow::anyhow!("Division by zero").into())
+                        Err(anyhow::anyhow!("Division by zero".into())
                     }
                 },
-                _ => Err(anyhow::anyhow!("Cannot divide {:?} and {:?}", left.type_name(), right.type_name()).into()),
+                _ => Err(anyhow::anyhow!("Cannot divide {:?} and {:?}", left.type_name(.into(), right.type_name()).into()),
             },
             BinaryOperator::Equal => Ok(Value::Boolean(self.values_equal(left, right))),
             BinaryOperator::NotEqual => Ok(Value::Boolean(!self.values_equal(left, right))),
@@ -509,28 +509,28 @@ impl Interpreter {
                 if let (Some(a), Some(b)) = (left.as_number(), right.as_number()) {
                     Ok(Value::Boolean(a < b))
                 } else {
-                    Err(anyhow::anyhow!("Cannot compare {:?} and {:?}", left.type_name(), right.type_name()).into())
+                    Err(anyhow::anyhow!("Cannot compare {:?} and {:?}", left.type_name(.into(), right.type_name()).into())
                 }
             },
             BinaryOperator::LessThanOrEqual => {
                 if let (Some(a), Some(b)) = (left.as_number(), right.as_number()) {
                     Ok(Value::Boolean(a <= b))
                 } else {
-                    Err(anyhow::anyhow!("Cannot compare {:?} and {:?}", left.type_name(), right.type_name()).into())
+                    Err(anyhow::anyhow!("Cannot compare {:?} and {:?}", left.type_name(.into(), right.type_name()).into())
                 }
             },
             BinaryOperator::GreaterThan => {
                 if let (Some(a), Some(b)) = (left.as_number(), right.as_number()) {
                     Ok(Value::Boolean(a > b))
                 } else {
-                    Err(anyhow::anyhow!("Cannot compare {:?} and {:?}", left.type_name(), right.type_name()).into())
+                    Err(anyhow::anyhow!("Cannot compare {:?} and {:?}", left.type_name(.into(), right.type_name()).into())
                 }
             },
             BinaryOperator::GreaterThanOrEqual => {
                 if let (Some(a), Some(b)) = (left.as_number(), right.as_number()) {
                     Ok(Value::Boolean(a >= b))
                 } else {
-                    Err(anyhow::anyhow!("Cannot compare {:?} and {:?}", left.type_name(), right.type_name()).into())
+                    Err(anyhow::anyhow!("Cannot compare {:?} and {:?}", left.type_name(.into(), right.type_name()).into())
                 }
             },
             BinaryOperator::Pipe => {

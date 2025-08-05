@@ -341,7 +341,7 @@ impl IRGenerator {
                     BinaryOperator::Subtract => IRInstruction::Sub { dest: dest_reg.clone(), left: left_val, right: right_val },
                     BinaryOperator::Multiply => IRInstruction::Mul { dest: dest_reg.clone(), left: left_val, right: right_val },
                     BinaryOperator::Divide => IRInstruction::Div { dest: dest_reg.clone(), left: left_val, right: right_val },
-                    _ => return Err(anyhow::anyhow!("Unsupported binary operator: {:?}", op).into()),
+                    _ => return Err(anyhow::anyhow!("Unsupported binary operator: {:?}", op.into()),
                 };
 
                 block.instructions.push(instruction);
@@ -424,7 +424,7 @@ impl IRGenerator {
                 match function {
                     "analyze_fft" => {
                         if args.is_empty() {
-                            return Err(anyhow::anyhow!("analyze_fft requires audio input").into());
+                            return Err(anyhow::anyhow!("analyze_fft requires audio input".into());
                         }
                         let bands = if args.len() > 1 {
                             8 // Default or extract from args

@@ -310,6 +310,55 @@ impl From<rosc::OscError> for SynthesisError {
     }
 }
 
+// Handle audio system errors
+impl From<cpal::DefaultStreamConfigError> for SynthesisError {
+    fn from(err: cpal::DefaultStreamConfigError) -> Self {
+        SynthesisError::audio_device_error(format!("Audio configuration error: {}", err))
+    }
+}
+
+impl From<cpal::BuildStreamError> for SynthesisError {
+    fn from(err: cpal::BuildStreamError) -> Self {
+        SynthesisError::audio_device_error(format!("Audio stream error: {}", err))
+    }
+}
+
+impl From<cpal::StreamError> for SynthesisError {
+    fn from(err: cpal::StreamError) -> Self {
+        SynthesisError::audio_device_error(format!("Audio stream error: {}", err))
+    }
+}
+
+impl From<cpal::PlayStreamError> for SynthesisError {
+    fn from(err: cpal::PlayStreamError) -> Self {
+        SynthesisError::audio_device_error(format!("Audio playback error: {}", err))
+    }
+}
+
+// Handle graphics surface errors
+impl From<wgpu::SurfaceError> for SynthesisError {
+    fn from(err: wgpu::SurfaceError) -> Self {
+        SynthesisError::new(
+            ErrorKind::GraphicsContextError,
+            format!("Graphics surface error: {}", err)
+        )
+        .with_suggestion("Check graphics card and driver compatibility")
+        .with_suggestion("Try restarting the application")
+    }
+}
+
+// Handle serial port errors
+impl From<serialport::Error> for SynthesisError {
+    fn from(err: serialport::Error) -> Self {
+        SynthesisError::new(
+            ErrorKind::AudioDeviceError,
+            format!("Hardware connection error: {}", err)
+        )
+        .with_suggestion("Check that your hardware is connected")
+        .with_suggestion("Verify correct port and baud rate")
+    }
+}
+
 // Never expose internal Rust errors to users
 impl From<anyhow::Error> for SynthesisError {
     fn from(err: anyhow::Error) -> Self {

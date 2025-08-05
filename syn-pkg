@@ -1,0 +1,34 @@
+#!/bin/bash
+# Synthesis Package Manager - Standalone Wrapper
+# Hides all Rust/Cargo implementation details from end users
+
+set -e
+
+SYNTHESIS_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SYNTHESIS_BIN="$SYNTHESIS_ROOT/target/release/syn-pkg"
+
+# Check if syn-pkg binary exists, build if needed
+if [[ ! -f "$SYNTHESIS_BIN" ]]; then
+    echo "🔧 Setting up Synthesis development environment..."
+    cd "$SYNTHESIS_ROOT"
+    
+    # Check for Rust installation (required for building, but hidden from user)
+    if ! command -v cargo &> /dev/null; then
+        echo "❌ Error: Synthesis requires build tools that are not installed."
+        echo "Please visit https://synthesis-lang.org/install for setup instructions."
+        exit 1
+    fi
+    
+    # Build syn-pkg silently
+    echo "📦 Building package manager..."
+    cargo build --release --bin syn-pkg --quiet 2>/dev/null || {
+        echo "❌ Build failed. Please check your installation."
+        exit 1
+    }
+    
+    echo "✅ Setup complete!"
+    echo
+fi
+
+# Execute syn-pkg with all arguments
+exec "$SYNTHESIS_BIN" "$@"

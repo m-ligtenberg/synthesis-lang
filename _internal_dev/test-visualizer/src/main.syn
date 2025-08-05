@@ -1,0 +1,14 @@
+// Main Synthesis program
+import Audio.{mic_input, analyze_fft}
+import Graphics.{clear, plasma}
+
+loop {
+    audio = Audio.mic_input()
+    fft_data = Audio.analyze_fft(audio, 8)
+    
+    Graphics.clear(Graphics.black)
+    Graphics.plasma({
+        speed: fft_data[0],
+        intensity: fft_data[1]
+    })
+}

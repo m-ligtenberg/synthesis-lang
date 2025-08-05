@@ -1,0 +1,333 @@
+#!/bin/bash
+
+# Synthesis Language Release Packager v0.1.2
+# Creates release packages for multiple platforms
+
+set -e
+
+VERSION="0.1.2"
+RELEASE_DIR="release"
+BUILD_DIR="target"
+
+echo "🚀 Synthesis Language Release Packager v$VERSION"
+echo ""
+
+# Parse arguments
+PLATFORMS="all"
+SKIP_TESTS=false
+CREATE_ARCHIVES=true
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --platform)
+            PLATFORMS="$2"
+            shift 2
+            ;;
+        --skip-tests)
+            SKIP_TESTS=true
+            shift
+            ;;
+        --no-archives)
+            CREATE_ARCHIVES=false
+            shift
+            ;;
+        --help|-h)
+            show_help
+            exit 0
+            ;;
+        *)
+            echo "❌ Unknown option: $1"
+            exit 1
+            ;;
+    esac
+done
+
+show_help() {
+    echo "Synthesis Language Release Packager"
+    echo ""
+    echo "USAGE:"
+    echo "  ./release.synt [options]"
+    echo ""
+    echo "OPTIONS:"
+    echo "  --platform <target>    Build for specific platform (linux, macos, windows, all)"
+    echo "  --skip-tests          Skip running tests before release"
+    echo "  --no-archives         Don't create .tar.gz/.zip archives"
+    echo "  --help, -h            Show this help"
+    echo ""
+    echo "EXAMPLES:"
+    echo "  ./release.synt                    # Build all platforms"
+    echo "  ./release.synt --platform linux  # Linux x86_64 only"
+    echo "  ./release.synt --skip-tests       # Skip tests (faster)"
+}
+
+# Setup build environment
+setup_build() {
+    echo "🔧 Setting up Synthesis build environment..."
+    
+    # Verify we have the internal build system
+    if [[ ! -f "_internal_dev/Cargo.toml" ]]; then
+        echo "❌ Internal build configuration not found"
+        echo "   This appears to be an incomplete source distribution."
+        exit 1
+    fi
+    
+    # Create release directory
+    rm -rf "$RELEASE_DIR"
+    mkdir -p "$RELEASE_DIR"
+    
+    echo "✅ Synthesis build environment ready"
+}
+
+# Cleanup
+cleanup() {
+    rm -f Cargo.toml Cargo.lock
+}
+trap cleanup EXIT
+
+# Run tests
+run_tests() {
+    if [[ "$SKIP_TESTS" == "false" ]]; then
+        echo "🧪 Running test suite..."
+        cargo test --release --quiet || {
+            echo "❌ Tests failed! Release aborted."
+            exit 1
+        }
+        echo "✅ All tests passed"
+    else
+        echo "⚠️  Skipping tests"
+    fi
+}
+
+# Build for specific target
+build_target() {
+    local target=$1
+    local platform_name=$2
+    
+    echo "🔨 Building for $platform_name..."
+    
+    if [[ "$target" == "native" ]]; then
+        cargo build --release --quiet || {
+            echo "❌ Build failed for $platform_name"
+            return 1
+        }
+    else
+        # Check if target is installed
+        if ! rustup target list --installed | grep -q "$target"; then
+            echo "📦 Installing target $target..."
+            rustup target add "$target"
+        fi
+        
+        cargo build --release --target "$target" --quiet || {
+            echo "❌ Build failed for $target"
+            return 1
+        }
+    fi
+    
+    echo "✅ Build complete for $platform_name"
+}
+
+# Package binaries
+package_platform() {
+    local target=$1
+    local platform_name=$2
+    local package_name="synthesis-v$VERSION-$platform_name"
+    
+    echo "📦 Packaging $platform_name..."
+    
+    # Create package directory
+    local pkg_dir="$RELEASE_DIR/$package_name"
+    mkdir -p "$pkg_dir"
+    
+    # Determine binary extension and source path
+    local exe_ext=""
+    local target_dir="$BUILD_DIR/release"
+    
+    if [[ "$platform_name" == *"windows"* ]]; then
+        exe_ext=".exe"
+    fi
+    
+    if [[ "$target" != "native" ]]; then
+        target_dir="$BUILD_DIR/$target/release"
+    fi
+    
+    # Copy binaries
+    cp "$target_dir/synthesis$exe_ext" "$pkg_dir/" 2>/dev/null || echo "⚠️  synthesis binary not found"
+    cp "$target_dir/synthc$exe_ext" "$pkg_dir/" 2>/dev/null || echo "⚠️  synthc binary not found"
+    cp "$target_dir/syn-pkg$exe_ext" "$pkg_dir/" 2>/dev/null || echo "⚠️  syn-pkg binary not found"
+    
+    # Copy essential files
+    cp README.md "$pkg_dir/"
+    cp LICENSE "$pkg_dir/"
+    cp install.synt "$pkg_dir/"
+    cp -r examples "$pkg_dir/"
+    
+    # Create release info
+    cat > "$pkg_dir/RELEASE_INFO.md" << EOF
+# Synthesis Language v$VERSION
+
+**Platform**: $platform_name
+**Build Date**: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+**Architecture**: $target
+
+## Installation
+
+### Quick Install
+\`\`\`bash
+./install.synt
+\`\`\`
+
+### Manual Install
+1. Add the binaries to your PATH
+2. Try: \`./synthc examples/hello.syn\`
+3. Run: \`./synthesis hello.wasm\`
+
+## Binaries Included
+
+- **synthc** - Synthesis Compiler
+- **synthesis** - Synthesis Runtime
+- **syn-pkg** - Package Manager
+
+## Get Started
+
+\`\`\`bash
+# Compile an example
+./synthc examples/audio_visualizer.syn
+
+# Run it
+./synthesis audio_visualizer.wasm
+\`\`\`
+
+## Documentation
+
+- 🌐 Website: https://synthesis-lang.org
+- 📚 Docs: https://synthesis-lang.org/docs
+- 💬 Community: https://synthesis-lang.org/community
+
+Happy creating! 🎨✨
+EOF
+    
+    # Create archives if requested
+    if [[ "$CREATE_ARCHIVES" == "true" ]]; then
+        cd "$RELEASE_DIR"
+        
+        if [[ "$platform_name" == *"windows"* ]]; then
+            # Create ZIP for Windows
+            if command -v zip &> /dev/null; then
+                zip -r "$package_name.zip" "$package_name/" > /dev/null
+                echo "📦 Created $package_name.zip"
+            else
+                echo "⚠️  zip not available, skipping archive creation"
+            fi
+        else
+            # Create tar.gz for Unix-like systems
+            tar -czf "$package_name.tar.gz" "$package_name/"
+            echo "📦 Created $package_name.tar.gz"
+        fi
+        
+        cd ..
+    fi
+    
+    echo "✅ Package ready: $pkg_dir"
+}
+
+# Main build logic
+build_platforms() {
+    case "$PLATFORMS" in
+        "linux"|"linux-x64")
+            build_target "x86_64-unknown-linux-gnu" "linux-x64"
+            package_platform "x86_64-unknown-linux-gnu" "linux-x64"
+            ;;
+        "macos"|"macos-x64")
+            build_target "x86_64-apple-darwin" "macos-x64"
+            package_platform "x86_64-apple-darwin" "macos-x64"
+            ;;
+        "macos-arm64")
+            build_target "aarch64-apple-darwin" "macos-arm64"
+            package_platform "aarch64-apple-darwin" "macos-arm64"
+            ;;
+        "windows"|"windows-x64")
+            build_target "x86_64-pc-windows-msvc" "windows-x64"
+            package_platform "x86_64-pc-windows-msvc" "windows-x64"
+            ;;
+        "native")
+            build_target "native" "native"
+            package_platform "native" "native"
+            ;;
+        "all")
+            echo "🚀 Building for all platforms..."
+            
+            # Build native first (fastest)
+            build_target "native" "native"
+            package_platform "native" "native"
+            
+            # Cross-compile if targets are available
+            for target_info in \
+                "x86_64-unknown-linux-gnu:linux-x64" \
+                "x86_64-apple-darwin:macos-x64" \
+                "aarch64-apple-darwin:macos-arm64" \
+                "x86_64-pc-windows-msvc:windows-x64"
+            do
+                IFS=':' read -r target platform_name <<< "$target_info"
+                if rustup target list --installed | grep -q "$target" || rustup target add "$target" 2>/dev/null; then
+                    build_target "$target" "$platform_name"
+                    package_platform "$target" "$platform_name"
+                else
+                    echo "⚠️  Skipping $platform_name (target $target not available)"
+                fi
+            done
+            ;;
+        *)
+            echo "❌ Unknown platform: $PLATFORMS"
+            echo "Supported: linux, macos, macos-arm64, windows, native, all"
+            exit 1
+            ;;
+    esac
+}
+
+# Create release summary
+create_summary() {
+    echo ""
+    echo "📋 Release Summary for Synthesis v$VERSION"
+    echo "=============================================="
+    
+    if [[ -d "$RELEASE_DIR" ]]; then
+        echo ""
+        echo "📦 Packages created:"
+        ls -la "$RELEASE_DIR/" | grep -E "\.(tar\.gz|zip)$" || echo "   (No archives created)"
+        
+        echo ""
+        echo "📁 Directories:"
+        ls -d "$RELEASE_DIR"/*/ 2>/dev/null | sed 's|.*/||' | sed 's|/$||' | while read dir; do
+            echo "   • $dir"
+        done
+        
+        echo ""
+        echo "📊 Package sizes:"
+        if ls "$RELEASE_DIR"/*.tar.gz "$RELEASE_DIR"/*.zip &>/dev/null; then
+            ls -lh "$RELEASE_DIR"/*.tar.gz "$RELEASE_DIR"/*.zip 2>/dev/null | awk '{print "   " $9 ": " $5}'
+        fi
+        
+        echo ""
+        echo "🚀 Ready for distribution!"
+        echo ""
+        echo "Next steps:"
+        echo "  1. Test packages on target platforms"
+        echo "  2. Create GitHub release with these assets"
+        echo "  3. Update installation URLs"
+        echo "  4. Announce the release! 🎉"
+        
+    else
+        echo "❌ No packages were created"
+    fi
+}
+
+# Main execution
+main() {
+    setup_build
+    run_tests
+    build_platforms
+    create_summary
+}
+
+# Run it!
+main

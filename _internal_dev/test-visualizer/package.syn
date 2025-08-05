@@ -1,0 +1,9 @@
+[package]
+name = "test-visualizer"
+version = "0.1.0"
+description = "A Synthesis language project"
+license = "MIT"
+
+[build]
+target = "native"
+optimization = "debug"

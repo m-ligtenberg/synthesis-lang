@@ -1,0 +1,27 @@
+[package]
+name = "synthesis-lang"
+version = "0.1.0"
+description = "Universal Creative Programming Language"
+author = "Synthesis Team"
+license = "MIT"
+homepage = "https://synthesis-lang.org"
+
+[build]
+target = "native"
+optimization = "debug"
+features = ["audio", "graphics", "gui", "hardware"]
+
+[dependencies]
+# Community packages would go here
+# audio-effects = "1.0"
+# visual-presets = "2.1"
+# midi-controllers = "0.5"
+
+[scripts]
+dev = "syn-pkg build && syn-pkg run examples/demo.syn"
+test = "syn-pkg run tests/all_tests.syn"
+demo = "syn-pkg run examples/interactive-garden.syn"
+
+[metadata]
+keywords = ["creative-coding", "audio", "graphics", "live-coding"]
+categories = ["multimedia", "game-development", "graphics"]

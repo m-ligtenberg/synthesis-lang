@@ -58,7 +58,7 @@ impl<'a> Parser<'a> {
                 self.advance();
                 name
             }
-            _ => return Err(anyhow::anyhow!("Expected module name after import")),
+            _ => return Err(anyhow::anyhow!("Expected module name after import").into()),
         };
         
         let items = if self.match_token(&Token::Dot) {
@@ -142,7 +142,7 @@ impl<'a> Parser<'a> {
                 self.advance();
                 name
             }
-            _ => return Err(anyhow::anyhow!("Expected identifier in assignment")),
+            _ => return Err(anyhow::anyhow!("Expected identifier in assignment").into()),
         };
         
         self.consume_token(Token::Assignment)?;
@@ -246,7 +246,7 @@ impl<'a> Parser<'a> {
                 self.advance();
                 Ok(Pattern::Literal(Literal::Boolean(val)))
             }
-            _ => Err(anyhow::anyhow!("Expected pattern")),
+            _ => Err(anyhow::anyhow!("Expected pattern").into()),
         }
     }
     
@@ -282,7 +282,7 @@ impl<'a> Parser<'a> {
                 self.consume_token(Token::RightBrace)?;
                 Ok(Statement::While { condition, body })
             }
-            _ => Err(anyhow::anyhow!("Unexpected temporal token")),
+            _ => Err(anyhow::anyhow!("Unexpected temporal token").into()),
         }
     }
     
@@ -399,7 +399,7 @@ impl<'a> Parser<'a> {
                         named_args: HashMap::new(),
                     };
                 } else {
-                    return Err(anyhow::anyhow!("Invalid function call"));
+                    return Err(anyhow::anyhow!("Invalid function call").into());
                 }
             } else if self.match_token(&Token::LeftBracket) {
                 self.advance();
@@ -461,10 +461,10 @@ impl<'a> Parser<'a> {
                             unit,
                         })
                     } else {
-                        Err(anyhow::anyhow!("Invalid unit value: {}", unit_string))
+                        Err(anyhow::anyhow!("Invalid unit value: {}", unit_string).into())
                     }
                 } else {
-                    Err(anyhow::anyhow!("Invalid unit format: {}", unit_string))
+                    Err(anyhow::anyhow!("Invalid unit format: {}", unit_string).into())
                 }
             }
             Some(Token::Identifier(name)) => {
@@ -492,7 +492,7 @@ impl<'a> Parser<'a> {
                             Ok(Expression::Identifier(format!("{}.{}", name, func_name)))
                         }
                     } else {
-                        Err(anyhow::anyhow!("Expected function name after dot"))
+                        Err(anyhow::anyhow!("Expected function name after dot").into())
                     }
                 } else {
                     Ok(Expression::Identifier(name))
@@ -518,7 +518,7 @@ impl<'a> Parser<'a> {
                     count,
                 })
             }
-            _ => Err(anyhow::anyhow!("Unexpected token in expression")),
+            _ => Err(anyhow::anyhow!("Unexpected token in expression").into()),
         }
     }
     
@@ -563,7 +563,7 @@ impl<'a> Parser<'a> {
                             self.advance();
                             name
                         }
-                        _ => return Err(anyhow::anyhow!("Expected identifier in named argument")),
+                        _ => return Err(anyhow::anyhow!("Expected identifier in named argument").into()),
                     };
                     
                     self.consume_token(Token::Colon)?;
@@ -621,7 +621,7 @@ impl<'a> Parser<'a> {
             self.advance();
             Ok(())
         } else {
-            Err(anyhow::anyhow!("Expected {:?}, found {:?}", expected, self.current_token()))
+            Err(anyhow::anyhow!("Expected {:?}, found {:?}", expected, self.current_token()).into())
         }
     }
     

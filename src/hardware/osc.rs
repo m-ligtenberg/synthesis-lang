@@ -224,7 +224,7 @@ impl OscClient {
             
             socket.send_to(&encoded, target_addr)?;
         } else {
-            return Err(anyhow::anyhow!("OSC client not connected"));
+            return Err(anyhow::anyhow!("OSC client not connected").into());
         }
         
         Ok(())

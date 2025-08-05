@@ -10,6 +10,9 @@ pub enum Item {
     Import(ImportItem),
     Statement(Statement),
     Loop(LoopBlock),
+    Function(FunctionDef),
+    Class(ClassDef),
+    Struct(StructDef),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -21,6 +24,55 @@ pub struct ImportItem {
 #[derive(Debug, Clone, PartialEq)]
 pub struct LoopBlock {
     pub body: Vec<Statement>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct FunctionDef {
+    pub name: String,
+    pub parameters: Vec<Parameter>,
+    pub return_type: Option<TypeAnnotation>,
+    pub body: Vec<Statement>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Parameter {
+    pub name: String,
+    pub type_annotation: Option<TypeAnnotation>,
+    pub default_value: Option<Expression>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ClassDef {
+    pub name: String,
+    pub fields: Vec<Field>,
+    pub methods: Vec<FunctionDef>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct StructDef {
+    pub name: String,
+    pub fields: Vec<Field>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Field {
+    pub name: String,
+    pub type_annotation: TypeAnnotation,
+    pub default_value: Option<Expression>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum TypeAnnotation {
+    Simple(String),
+    Generic {
+        base: String,
+        params: Vec<TypeAnnotation>,
+    },
+    Array(Box<TypeAnnotation>),
+    Function {
+        params: Vec<TypeAnnotation>,
+        return_type: Box<TypeAnnotation>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -51,6 +103,19 @@ pub enum Statement {
         condition: Expression,
         body: Vec<Statement>,
     },
+    For {
+        variable: String,
+        iterable: Expression,
+        body: Vec<Statement>,
+    },
+    Let {
+        name: String,
+        type_annotation: Option<TypeAnnotation>,
+        value: Option<Expression>,
+    },
+    Return(Option<Expression>),
+    Break,
+    Continue,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -112,6 +177,42 @@ pub enum Expression {
         value: Box<Expression>,
         unit: String,
     },
+    ArrayLiteral(Vec<Expression>),
+    Range {
+        start: Box<Expression>,
+        end: Box<Expression>,
+        inclusive: bool,
+    },
+    Lambda {
+        parameters: Vec<String>,
+        body: Box<Expression>,
+    },
+    MethodCall {
+        object: Box<Expression>,
+        method: String,
+        args: Vec<Expression>,
+        named_args: HashMap<String, Expression>,
+    },
+    InterpolatedString(Vec<StringPart>),
+    ConditionalExpression {
+        condition: Box<Expression>,
+        true_expr: Box<Expression>,
+        false_expr: Box<Expression>,
+    },
+    MatchExpression {
+        expr: Box<Expression>,
+        arms: Vec<MatchArm>,
+    },
+    TypeCast {
+        expr: Box<Expression>,
+        target_type: TypeAnnotation,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum StringPart {
+    Text(String),
+    Interpolation(Expression),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -134,6 +235,8 @@ pub enum BinaryOperator {
     LessThanOrEqual,
     GreaterThan,
     GreaterThanOrEqual,
+    LogicalAnd,
+    LogicalOr,
     Pipe,
     BiDirectionalPipe,
 }

@@ -1,4 +1,5 @@
-use crate::runtime::types::{DataType, Stream, Value};
+use crate::runtime::types::{DataType, Value, Stream};
+use crate::errors::ErrorKind;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -22,7 +23,9 @@ pub struct StreamManager {
 
 #[derive(Debug, Clone)]
 pub struct StreamData {
-    pub stream: Stream,
+    pub name: String,
+    pub data_type: DataType,
+    pub sample_rate: Option<f32>,
     pub buffer: Vec<f32>,
     pub position: usize,
     pub is_active: bool,
@@ -59,14 +62,10 @@ impl StreamManager {
     }
     
     pub fn create_stream(&mut self, name: String, data_type: DataType, sample_rate: Option<f32>) -> crate::Result<()> {
-        let stream = Stream {
+        let stream_data = StreamData {
             name: name.clone(),
             data_type,
             sample_rate,
-        };
-        
-        let stream_data = StreamData {
-            stream,
             buffer: Vec::new(),
             position: 0,
             is_active: false,
@@ -81,11 +80,11 @@ impl StreamManager {
     
     pub fn connect(&mut self, source: String, destination: String) -> crate::Result<()> {
         if !self.streams.contains_key(&source) {
-            return Err(anyhow::anyhow!("Source stream '{}' does not exist", source));
+            return Err(crate::SynthesisError::new(crate::ErrorKind::UnknownModule, format!("Source stream '{}' does not exist", source)));
         }
         
         if !self.streams.contains_key(&destination) {
-            return Err(anyhow::anyhow!("Destination stream '{}' does not exist", destination));
+            return Err(crate::SynthesisError::new(crate::ErrorKind::UnknownModule, format!("Destination stream '{}' does not exist", destination)));
         }
         
         self.connections
@@ -107,7 +106,7 @@ impl StreamManager {
             stream_data.is_active = true;
             Ok(())
         } else {
-            Err(anyhow::anyhow!("Stream '{}' not found", name))
+            Err(crate::SynthesisError::new(crate::ErrorKind::UnknownModule, format!("Stream '{}' not found", name)))
         }
     }
     
@@ -123,7 +122,7 @@ impl StreamManager {
             stream_data.buffer.drain(..count);
             Ok(data)
         } else {
-            Err(anyhow::anyhow!("Stream '{}' not found", name))
+            Err(crate::SynthesisError::new(crate::ErrorKind::UnknownModule, format!("Stream '{}' not found", name)))
         }
     }
     
@@ -149,7 +148,11 @@ impl StreamManager {
     pub fn get_stream_value(&self, name: &str) -> Value {
         if let Some(stream) = self.streams.get(name) {
             let stream_data = stream.lock().unwrap();
-            Value::Stream(stream_data.stream.clone())
+            Value::Stream(crate::runtime::types::Stream {
+                name: stream_data.name.clone(),
+                data_type: stream_data.data_type.clone(),
+                sample_rate: stream_data.sample_rate,
+            })
         } else {
             Value::Null
         }
@@ -163,7 +166,7 @@ impl StreamManager {
             stream_data.processing_chain.push(processor);
             Ok(())
         } else {
-            Err(anyhow::anyhow!("Stream '{}' not found", stream_name))
+            Err(crate::SynthesisError::new(ErrorKind::UnknownModule, format!("Stream '{}' not found", stream_name)))
         }
     }
     
@@ -173,7 +176,7 @@ impl StreamManager {
             stream_data.metadata.insert(key, value);
             Ok(())
         } else {
-            Err(anyhow::anyhow!("Stream '{}' not found", stream_name))
+            Err(crate::SynthesisError::new(ErrorKind::UnknownModule, format!("Stream '{}' not found", stream_name)))
         }
     }
     
@@ -198,7 +201,7 @@ impl StreamManager {
             
             Ok(data)
         } else {
-            Err(anyhow::anyhow!("Stream '{}' not found", stream_name))
+            Err(crate::SynthesisError::new(ErrorKind::UnknownModule, format!("Stream '{}' not found", stream_name)))
         }
     }
     
@@ -290,13 +293,13 @@ impl StreamManager {
         if let Some(source_stream) = self.streams.get(source_name).cloned() {
             let source_data = source_stream.lock().unwrap();
             let mut new_stream_data = source_data.clone();
-            new_stream_data.stream.name = new_name.clone();
+            new_stream_data.name = new_name.clone();
             new_stream_data.timestamp = Instant::now();
             
             self.streams.insert(new_name, Arc::new(Mutex::new(new_stream_data)));
             Ok(())
         } else {
-            Err(anyhow::anyhow!("Source stream '{}' not found", source_name))
+            Err(crate::SynthesisError::new(ErrorKind::UnknownModule, format!("Source stream '{}' not found", source_name)))
         }
     }
     

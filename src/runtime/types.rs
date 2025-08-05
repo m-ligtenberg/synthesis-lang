@@ -16,6 +16,7 @@ pub enum Value {
     Null,
 }
 
+
 impl fmt::Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -66,7 +67,8 @@ pub enum DataType {
 pub struct Function {
     pub name: String,
     pub parameters: Vec<String>,
-    pub body: crate::parser::ast::Statement,
+    // TODO: Replace with proper AST reference when circular dependency is resolved
+    pub body: String, // Temporary placeholder for function body
 }
 
 impl Value {

@@ -1,0 +1,92 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: synthesis-sandbox
+  labels:
+    app: synthesis-sandbox
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+  selector:
+    matchLabels:
+      app: synthesis-sandbox
+  template:
+    metadata:
+      labels:
+        app: synthesis-sandbox
+    spec:
+      containers:
+      - name: synthesis-sandbox
+        image: ghcr.io/synthesis-lang/synthesis-sandbox:latest
+        ports:
+        - containerPort: 8080
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+        securityContext:
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          runAsUser: 1000
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 15
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        env:
+        - name: RUST_LOG
+          value: info
+        - name: MAX_EXECUTION_TIME
+          value: "5"
+        - name: MAX_MEMORY
+          value: "512"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: synthesis-sandbox
+spec:
+  selector:
+    app: synthesis-sandbox
+  ports:
+  - port: 80
+    targetPort: 8080
+  type: LoadBalancer
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: synthesis-sandbox-network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: synthesis-sandbox
+  ingress:
+  - ports:
+    - port: 8080
+  egress:
+  - ports:
+    - port: 53  # DNS
+  - to:
+    - ipBlock:
+        cidr: 0.0.0.0/0
+        except:
+        - 10.0.0.0/8
+        - 172.16.0.0/12
+        - 192.168.0.0/16

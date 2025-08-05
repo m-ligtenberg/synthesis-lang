@@ -1,5 +1,3 @@
-# 🎨 Synthesis Language
-
 **The Universal Creative Programming Language**
 
 Synthesis bridges the gap between creative vision and technical implementation, making professional-quality creative coding accessible to artists while providing the depth needed for complex projects.
@@ -191,6 +189,6 @@ Synthesis is dual-licensed under MIT and Apache 2.0. Use whichever works best fo
 
 ---
 
-**Built with ❤️ for artists, musicians, and creative technologists.**
+**Built with ❤️ for artists, musicians, and creative nerds.**
 
 *Synthesis aims to be the bridge between creative vision and technical implementation, making professional-quality creative coding accessible to artists while providing the depth needed for complex projects.*

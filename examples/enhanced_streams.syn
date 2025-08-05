@@ -1,0 +1,46 @@
+// Enhanced Stream Operators Demo
+// Demonstrates the new pipe (|>), bidirectional (<>), and branch operations
+
+import Audio.{mic_input, analyze_fft, beat_detect, volume}
+import Graphics.{clear, plasma, starfield, flash}
+
+loop {
+    // Basic stream creation
+    audio = Audio.mic_input()
+    
+    // Enhanced pipe operator - chain operations fluently  
+    volume_audio = Audio.volume(audio, 0.8)
+    processed_audio = Audio.analyze_fft(volume_audio, 8)
+    
+    // Stream branching demonstration (simplified for now)
+    main_audio = Audio.mic_input()
+    
+    // Multiple processing chains from branches
+    bass_line = main_audio_branch_1 |> Audio.bandpass(20, 200) |> Audio.volume(1.2)
+    mid_range = main_audio_branch_2 |> Audio.bandpass(200, 2000) |> Audio.volume(0.9)
+    treble = main_audio_branch_3 |> Audio.bandpass(2000, 20000) |> Audio.volume(1.1)
+    
+    // Visual processing with stream data
+    fft_data = processed_audio
+    beat = Audio.beat_detect(main_audio)
+    
+    Graphics.clear(Graphics.black)
+    
+    // Use stream data to drive visuals
+    if beat {
+        Graphics.flash(Graphics.white, 0.1)
+    }
+    
+    // Drive plasma with different frequency bands
+    Graphics.plasma({
+        speed: fft_data[0] * 2.0,
+        intensity: fft_data[1] * 1.5,
+        palette: "neon"
+    })
+    
+    // Starfield driven by treble frequencies
+    Graphics.starfield({
+        count: (fft_data[7] * 500) as integer,
+        speed: fft_data[6] * 3.0
+    })
+}

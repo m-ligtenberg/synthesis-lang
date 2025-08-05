@@ -19,14 +19,28 @@ pub enum Token {
     Every,
     After,
     While,
+    For,
+    In,
+    Func,
+    Class,
+    Struct,
+    Enum,
+    Let,
+    Return,
+    Break,
+    Continue,
+    Main,
+    As,
     
     // Identifiers and literals
     Identifier(String),
     Integer(i64),
     Float(f64),
     String(String),
+    InterpolatedString(Vec<crate::parser::ast::StringPart>),
     Boolean(bool),
     Unit(String),
+    ArrayLiteral(Vec<Token>),
     
     // Operators
     Plus,
@@ -39,6 +53,10 @@ pub enum Token {
     LessThanOrEqual,
     GreaterThan,
     GreaterThanOrEqual,
+    LogicalAnd,
+    LogicalOr,
+    Range,
+    RangeInclusive,
     Pipe,
     BiDirectionalPipe,
     Branch(u8),
@@ -56,6 +74,10 @@ pub enum Token {
     Assignment,
     Arrow,
     Underscore,
+    Semicolon,
+    Hash,
+    Dollar,
+    Pipe2,
     
     // Special
     Newline,
@@ -72,7 +94,12 @@ fn skip_whitespace_comments(input: &str) -> IResult<&str, ()> {
     // Handle comments
     loop {
         if let Ok((remaining, _)) = tag::<&str, &str, nom::error::Error<&str>>("//")(input) {
-            // Found a comment, skip to end of line
+            // Found a // comment, skip to end of line
+            let (remaining, _) = take_while(|c| c != '\n' && c != '\r')(remaining)?;
+            let (remaining, _) = multispace0(remaining)?;
+            input = remaining;
+        } else if let Ok((remaining, _)) = tag::<&str, &str, nom::error::Error<&str>>("#")(input) {
+            // Found a # comment, skip to end of line
             let (remaining, _) = take_while(|c| c != '\n' && c != '\r')(remaining)?;
             let (remaining, _) = multispace0(remaining)?;
             input = remaining;
@@ -92,7 +119,9 @@ fn token(input: &str) -> IResult<&str, Token> {
         integer_with_unit,
         float,
         integer,
+        interpolated_string,
         string_literal,
+        array_literal,
         identifier,
         operator,
         punctuation,
@@ -107,8 +136,20 @@ fn keyword(input: &str) -> IResult<&str, Token> {
         map(tag("every"), |_| Token::Every),
         map(tag("after"), |_| Token::After),
         map(tag("while"), |_| Token::While),
+        map(tag("for"), |_| Token::For),
+        map(tag("in"), |_| Token::In),
         map(tag("if"), |_| Token::If),
         map(tag("else"), |_| Token::Else),
+        map(tag("func"), |_| Token::Func),
+        map(tag("class"), |_| Token::Class),
+        map(tag("struct"), |_| Token::Struct),
+        map(tag("enum"), |_| Token::Enum),
+        map(tag("let"), |_| Token::Let),
+        map(tag("return"), |_| Token::Return),
+        map(tag("break"), |_| Token::Break),
+        map(tag("continue"), |_| Token::Continue),
+        map(tag("main"), |_| Token::Main),
+        map(tag("as"), |_| Token::As),
     ))(input)
 }
 
@@ -140,11 +181,75 @@ fn string_literal(input: &str) -> IResult<&str, Token> {
     map(
         delimited(
             char('"'),
-            take_while1(|c| c != '"'),
+            take_while1(|c| c != '"' && c != '$'),
             char('"'),
         ),
         |s: &str| Token::String(s.to_string()),
     )(input)
+}
+
+fn interpolated_string(input: &str) -> IResult<&str, Token> {
+    let (input, _) = char('"')(input)?;
+    let mut parts = Vec::new();
+    let mut remaining = input;
+    
+    loop {
+        // Parse text part
+        let (rest, text) = take_while(|c| c != '$' && c != '"')(remaining)?;
+        if !text.is_empty() {
+            parts.push(crate::parser::ast::StringPart::Text(text.to_string()));
+        }
+        
+        if let Ok((rest, _)) = char::<&str, nom::error::Error<&str>>('"')(rest) {
+            // End of string
+            return Ok((rest, Token::InterpolatedString(parts)));
+        } else if let Ok((rest, _)) = tag::<&str, &str, nom::error::Error<&str>>("${")(rest) {
+            // Start of interpolation
+            let (rest, expr) = take_while(|c| c != '}')(rest)?;
+            let (rest, _) = char('}')(rest)?;
+            // For now, we'll store the interpolation as a simple identifier expression
+            // The parser will need to parse this properly
+            let interpolation_expr = crate::parser::ast::Expression::Identifier(expr.to_string());
+            parts.push(crate::parser::ast::StringPart::Interpolation(interpolation_expr));
+            remaining = rest;
+        } else {
+            // Unexpected character, treat as regular string
+            let (rest, _) = char('"')(remaining)?;
+            return Ok((rest, Token::String("".to_string())));
+        }
+    }
+}
+
+fn array_literal(input: &str) -> IResult<&str, Token> {
+    let (input, _) = char('[')(input)?;
+    let (input, _) = multispace0(input)?;
+    
+    let mut elements = Vec::new();
+    let mut remaining = input;
+    
+    while !remaining.is_empty() {
+        if let Ok((rest, _)) = char::<&str, nom::error::Error<&str>>(']')(remaining) {
+            return Ok((rest, Token::ArrayLiteral(elements)));
+        }
+        
+        // Parse element
+        if let Ok((rest, token)) = token(remaining) {
+            elements.push(token);
+            let (rest, _) = multispace0(rest)?;
+            
+            if let Ok((rest, _)) = char::<&str, nom::error::Error<&str>>(',')(rest) {
+                let (rest, _) = multispace0(rest)?;
+                remaining = rest;
+            } else {
+                remaining = rest;
+            }
+        } else {
+            break;
+        }
+    }
+    
+    let (input, _) = char(']')(remaining)?;
+    Ok((input, Token::ArrayLiteral(elements)))
 }
 
 fn identifier(input: &str) -> IResult<&str, Token> {
@@ -188,6 +293,10 @@ fn operator(input: &str) -> IResult<&str, Token> {
         map(tag("!="), |_| Token::NotEqual),
         map(tag("<="), |_| Token::LessThanOrEqual),
         map(tag(">="), |_| Token::GreaterThanOrEqual),
+        map(tag("&&"), |_| Token::LogicalAnd),
+        map(tag("||"), |_| Token::LogicalOr),
+        map(tag("..="), |_| Token::RangeInclusive),
+        map(tag(".."), |_| Token::Range),
         map(tag("<>"), |_| Token::BiDirectionalPipe),
         map(tag("<"), |_| Token::LessThan),
         map(tag(">"), |_| Token::GreaterThan),
@@ -221,5 +330,9 @@ fn punctuation(input: &str) -> IResult<&str, Token> {
         map(char(':'), |_| Token::Colon),
         map(char('.'), |_| Token::Dot),
         map(char('_'), |_| Token::Underscore),
+        map(char(';'), |_| Token::Semicolon),
+        map(char('#'), |_| Token::Hash),
+        map(char('$'), |_| Token::Dollar),
+        map(char('|'), |_| Token::Pipe2),
     ))(input)
 }

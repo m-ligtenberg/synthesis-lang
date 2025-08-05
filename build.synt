@@ -1,0 +1,228 @@
+#!/bin/bash
+
+# Synthesis Language Build System
+# Native build system that hides all Rust implementation details
+
+set -e
+
+SYNTHESIS_VERSION="0.1.2"
+BUILD_DIR="target"
+SOURCE_DIR="src"
+
+echo "🎨 Synthesis Language Build System v$SYNTHESIS_VERSION"
+echo ""
+
+# Parse command line arguments
+COMMAND=""
+TARGET="native"
+OPTIMIZATION="release"
+VERBOSE=false
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        build|compile|test|clean|install)
+            COMMAND="$1"
+            ;;
+        --target)
+            TARGET="$2"
+            shift
+            ;;
+        --debug)
+            OPTIMIZATION="debug"
+            ;;
+        --verbose|-v)
+            VERBOSE=true
+            ;;
+        --help|-h)
+            show_help
+            exit 0
+            ;;
+        *)
+            echo "❌ Unknown option: $1"
+            echo "Use --help for available options"
+            exit 1
+            ;;
+    esac
+    shift
+done
+
+show_help() {
+    echo "Synthesis Language Build System"
+    echo ""
+    echo "USAGE:"
+    echo "  ./build.syn <command> [options]"
+    echo ""
+    echo "COMMANDS:"
+    echo "  build      Build the Synthesis compiler and runtime"
+    echo "  compile    Alias for build"
+    echo "  test       Run the test suite"
+    echo "  clean      Clean build artifacts"
+    echo "  install    Install Synthesis system-wide"
+    echo ""
+    echo "OPTIONS:"
+    echo "  --target <target>    Build target (native, wasm, all)"
+    echo "  --debug              Build in debug mode"
+    echo "  --verbose, -v        Verbose output"
+    echo "  --help, -h           Show this help"
+    echo ""
+    echo "EXAMPLES:"
+    echo "  ./build.syn build"
+    echo "  ./build.syn build --target wasm"
+    echo "  ./build.syn test --verbose"
+    echo "  ./build.syn install"
+}
+
+# Ensure we have the internal build files
+setup_build_environment() {
+    if [[ ! -f "_internal_dev/Cargo.toml" ]]; then
+        echo "❌ Build configuration not found. This might be a source distribution issue."
+        exit 1
+    fi
+    
+    # Copy internal build files temporarily
+    cp _internal_dev/Cargo.toml .
+    cp _internal_dev/Cargo.lock . 2>/dev/null || true
+}
+
+# Clean up temporary build files
+cleanup_build_environment() {
+    rm -f Cargo.toml Cargo.lock
+}
+
+# Trap to ensure cleanup
+trap cleanup_build_environment EXIT
+
+case "$COMMAND" in
+    "build"|"compile")
+        echo "🔧 Building Synthesis Language..."
+        echo "📦 Target: $TARGET"
+        echo "⚡ Mode: $OPTIMIZATION"
+        echo ""
+        
+        setup_build_environment
+        
+        if [[ "$VERBOSE" == "true" ]]; then
+            echo "🔍 Build details:"
+        fi
+        
+        # Build based on target
+        case "$TARGET" in
+            "native")
+                if [[ "$OPTIMIZATION" == "debug" ]]; then
+                    if [[ "$VERBOSE" == "true" ]]; then
+                        cargo build --verbose
+                    else
+                        cargo build 2>/dev/null || {
+                            echo "❌ Build failed. Run with --verbose for details."
+                            exit 1
+                        }
+                    fi
+                    echo "✅ Debug build complete: target/debug/"
+                else
+                    if [[ "$VERBOSE" == "true" ]]; then
+                        cargo build --release --verbose
+                    else
+                        cargo build --release 2>/dev/null || {
+                            echo "❌ Build failed. Run with --verbose for details."
+                            exit 1
+                        }
+                    fi
+                    echo "✅ Release build complete: target/release/"
+                fi
+                ;;
+            "wasm")
+                echo "🌐 Building WebAssembly target..."
+                if [[ "$VERBOSE" == "true" ]]; then
+                    cargo build --target wasm32-unknown-unknown --verbose
+                else
+                    cargo build --target wasm32-unknown-unknown 2>/dev/null || {
+                        echo "❌ WebAssembly build failed. Make sure wasm32-unknown-unknown target is installed."
+                        echo "   Run: rustup target add wasm32-unknown-unknown"
+                        exit 1
+                    }
+                fi
+                echo "✅ WebAssembly build complete: target/wasm32-unknown-unknown/"
+                ;;
+            "all")
+                echo "🚀 Building all targets..."
+                "$0" build --target native --$OPTIMIZATION $([[ "$VERBOSE" == "true" ]] && echo "--verbose")
+                "$0" build --target wasm --$OPTIMIZATION $([[ "$VERBOSE" == "true" ]] && echo "--verbose")
+                ;;
+            *)
+                echo "❌ Unknown target: $TARGET"
+                echo "Supported targets: native, wasm, all"
+                exit 1
+                ;;
+        esac
+        
+        echo ""
+        echo "🎉 Synthesis Language built successfully!"
+        echo ""
+        echo "📋 Next steps:"
+        echo "  • Test: ./build.syn test"
+        echo "  • Install: ./build.syn install"
+        echo "  • Try: ./target/release/synthc examples/hello.syn"
+        ;;
+        
+    "test")
+        echo "🧪 Running Synthesis Language test suite..."
+        echo ""
+        
+        setup_build_environment
+        
+        if [[ "$VERBOSE" == "true" ]]; then
+            cargo test --verbose
+        else
+            cargo test 2>/dev/null || {
+                echo "❌ Tests failed. Run with --verbose for details."
+                exit 1
+            }
+        fi
+        
+        echo "✅ All tests passed!"
+        ;;
+        
+    "clean")
+        echo "🧹 Cleaning build artifacts..."
+        
+        setup_build_environment
+        cargo clean 2>/dev/null || true
+        
+        # Clean any synthesis-specific artifacts
+        rm -rf target/
+        rm -f *.wasm
+        rm -f synthc synthesis syn-pkg
+        
+        echo "✅ Build artifacts cleaned"
+        ;;
+        
+    "install")
+        echo "📦 Installing Synthesis Language..."
+        
+        # Build first if not already built
+        if [[ ! -f "target/release/synthc" ]]; then
+            echo "🔧 Building first..."
+            "$0" build --target native
+        fi
+        
+        # Use the installation script
+        if [[ -f "install.syn" ]]; then
+            ./install.syn --dev
+        else
+            echo "❌ Installation script not found"
+            exit 1
+        fi
+        ;;
+        
+    "")
+        echo "❌ No command specified"
+        echo "Use --help to see available commands"
+        exit 1
+        ;;
+        
+    *)
+        echo "❌ Unknown command: $COMMAND"
+        echo "Use --help to see available commands"
+        exit 1
+        ;;
+esac

@@ -1,0 +1,66 @@
+name: Synthesis Docs Site CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  build:
+    name: Build Documentation Site
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Install Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        profile: minimal
+        toolchain: stable
+        target: wasm32-unknown-unknown
+        override: true
+    
+    - name: Install wasm-pack
+      run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+    
+    - name: Build WebAssembly
+      run: wasm-pack build --release --target web
+    
+    - name: Build Documentation Site
+      run: cargo build --release
+    
+    - name: Run Tests
+      run: cargo test
+    
+    - name: Deploy to GitHub Pages
+      uses: peaceiris/actions-gh-pages@v3
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        publish_dir: ./target/release
+        publish_branch: gh-pages
+        force_orphan: true
+        full_commit_message: Deploy documentation site
+
+  analyze:
+    name: Code Quality Analysis
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Run Clippy
+      run: |
+        rustup component add clippy
+        cargo clippy -- -D warnings
+    
+    - name: Check Formatting
+      run: cargo fmt -- --check
+
+    - name: Security Audit
+      uses: actions-rs/audit-check@v1
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}

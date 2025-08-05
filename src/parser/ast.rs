@@ -96,6 +96,18 @@ pub enum Expression {
         left: Box<Expression>,
         right: Box<Expression>,
     },
+    BiDirectionalPipe {
+        left: Box<Expression>,
+        right: Box<Expression>,
+    },
+    StreamBranch {
+        stream: Box<Expression>,
+        count: u8,
+    },
+    StreamMerge {
+        streams: Vec<Expression>,
+        output_name: String,
+    },
     UnitValue {
         value: Box<Expression>,
         unit: String,
@@ -123,4 +135,5 @@ pub enum BinaryOperator {
     GreaterThan,
     GreaterThanOrEqual,
     Pipe,
+    BiDirectionalPipe,
 }

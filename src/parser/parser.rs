@@ -293,13 +293,22 @@ impl<'a> Parser<'a> {
     fn parse_pipe(&mut self) -> crate::Result<Expression> {
         let mut expr = self.parse_equality()?;
         
-        while self.match_token(&Token::Pipe) {
-            self.advance();
-            let right = self.parse_equality()?;
-            expr = Expression::Pipe {
-                left: Box::new(expr),
-                right: Box::new(right),
-            };
+        while self.match_token(&Token::Pipe) || self.match_token(&Token::BiDirectionalPipe) {
+            if self.match_token(&Token::Pipe) {
+                self.advance();
+                let right = self.parse_equality()?;
+                expr = Expression::Pipe {
+                    left: Box::new(expr),
+                    right: Box::new(right),
+                };
+            } else if self.match_token(&Token::BiDirectionalPipe) {
+                self.advance();
+                let right = self.parse_equality()?;
+                expr = Expression::BiDirectionalPipe {
+                    left: Box::new(expr),
+                    right: Box::new(right),
+                };
+            }
         }
         
         Ok(expr)
@@ -497,6 +506,17 @@ impl<'a> Parser<'a> {
             }
             Some(Token::LeftBrace) => {
                 self.parse_block()
+            }
+            Some(Token::Branch(count)) => {
+                let count = *count;
+                self.advance();
+                self.consume_token(Token::LeftParen)?;
+                let stream = self.parse_expression()?;
+                self.consume_token(Token::RightParen)?;
+                Ok(Expression::StreamBranch {
+                    stream: Box::new(stream),
+                    count,
+                })
             }
             _ => Err(anyhow::anyhow!("Unexpected token in expression")),
         }

@@ -40,6 +40,8 @@ pub enum Token {
     GreaterThan,
     GreaterThanOrEqual,
     Pipe,
+    BiDirectionalPipe,
+    Branch(u8),
     
     // Punctuation
     LeftParen,
@@ -186,15 +188,25 @@ fn operator(input: &str) -> IResult<&str, Token> {
         map(tag("!="), |_| Token::NotEqual),
         map(tag("<="), |_| Token::LessThanOrEqual),
         map(tag(">="), |_| Token::GreaterThanOrEqual),
+        map(tag("<>"), |_| Token::BiDirectionalPipe),
         map(tag("<"), |_| Token::LessThan),
         map(tag(">"), |_| Token::GreaterThan),
         map(tag("|>"), |_| Token::Pipe),
+        branch_operator,
         map(tag("+"), |_| Token::Plus),
         map(tag("-"), |_| Token::Minus),
         map(tag("*"), |_| Token::Multiply),
         map(tag("/"), |_| Token::Divide),
         map(tag("="), |_| Token::Assignment),
     ))(input)
+}
+
+fn branch_operator(input: &str) -> IResult<&str, Token> {
+    let (input, _) = tag("branch(")(input)?;
+    let (input, n) = nom::character::complete::digit1(input)?;
+    let (input, _) = char(')')(input)?;
+    let branch_count = n.parse().unwrap_or(2);
+    Ok((input, Token::Branch(branch_count)))
 }
 
 fn punctuation(input: &str) -> IResult<&str, Token> {

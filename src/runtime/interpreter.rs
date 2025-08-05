@@ -177,9 +177,79 @@ impl Interpreter {
                 }
             }
             Expression::Pipe { left, right } => {
-                let _left_val = self.evaluate_expression(left)?;
-                // For now, just evaluate right side - full pipe logic would need more context
-                self.evaluate_expression(right)
+                let left_val = self.evaluate_expression(left)?;
+                let right_val = self.evaluate_expression(right)?;
+                
+                // Enhanced pipe logic for stream processing
+                match (&left_val, &right_val) {
+                    (Value::Stream(stream), _) => {
+                        // Apply processing to stream
+                        println!("Piping stream '{}' through operation", stream.name);
+                        Ok(right_val)
+                    }
+                    _ => Ok(right_val),
+                }
+            }
+            Expression::BiDirectionalPipe { left, right } => {
+                let left_val = self.evaluate_expression(left)?;
+                let right_val = self.evaluate_expression(right)?;
+                
+                // Create bidirectional connection between streams
+                match (&left_val, &right_val) {
+                    (Value::Stream(left_stream), Value::Stream(right_stream)) => {
+                        println!("Creating bidirectional connection: '{}' <> '{}'", 
+                                left_stream.name, right_stream.name);
+                        
+                        // Connect both directions - this needs to be moved to a helper method
+                        // since we can't mutably borrow stream_manager in evaluate_expression
+                        println!("Would connect: {} <-> {}", left_stream.name, right_stream.name);
+                        
+                        Ok(left_val)
+                    }
+                    _ => Err(anyhow::anyhow!("Bidirectional pipe requires two streams"))
+                }
+            }
+            Expression::StreamBranch { stream, count } => {
+                let stream_val = self.evaluate_expression(stream)?;
+                
+                match stream_val {
+                    Value::Stream(stream) => {
+                        println!("Branching stream '{}' into {} outputs", stream.name, count);
+                        
+                        // Create branch streams - placeholder for now
+                        for i in 0..*count {
+                            let branch_name = format!("{}_branch_{}", stream.name, i + 1);
+                            println!("Would create branch stream: {}", branch_name);
+                        }
+                        
+                        Ok(Value::Stream(stream))
+                    }
+                    _ => Err(anyhow::anyhow!("Cannot branch non-stream value"))
+                }
+            }
+            Expression::StreamMerge { streams, output_name } => {
+                let mut stream_names = Vec::new();
+                
+                for stream_expr in streams {
+                    let stream_val = self.evaluate_expression(stream_expr)?;
+                    match stream_val {
+                        Value::Stream(stream) => stream_names.push(stream.name),
+                        _ => return Err(anyhow::anyhow!("Cannot merge non-stream value"))
+                    }
+                }
+                
+                if !stream_names.is_empty() {
+                    println!("Merging {} streams into '{}'", stream_names.len(), output_name);
+                    // Placeholder - actual merge would happen at execution level
+                    
+                    Ok(Value::Stream(crate::runtime::types::Stream {
+                        name: output_name.clone(),
+                        data_type: crate::runtime::types::DataType::Audio,
+                        sample_rate: Some(44100.0),
+                    }))
+                } else {
+                    Err(anyhow::anyhow!("No streams to merge"))
+                }
             }
             Expression::UnitValue { value, unit } => {
                 let val = self.evaluate_expression(value)?;
@@ -365,6 +435,10 @@ impl Interpreter {
                 // For now, just return the right operand - full pipe logic would need more context
                 Ok(right.clone())
             },
+            BinaryOperator::BiDirectionalPipe => {
+                // For bidirectional pipe, return the left operand
+                Ok(left.clone())
+            },
         }
     }
     
@@ -465,6 +539,52 @@ impl Interpreter {
             callback: crate::modules::graphics::text,
         });
         
+        // Advanced effects
+        graphics_module.functions.insert("particle_system".to_string(), ModuleFunction {
+            name: "particle_system".to_string(),
+            callback: crate::modules::graphics::particle_system,
+        });
+        
+        graphics_module.functions.insert("bloom_effect".to_string(), ModuleFunction {
+            name: "bloom_effect".to_string(),
+            callback: crate::modules::graphics::bloom_effect,
+        });
+        
+        graphics_module.functions.insert("depth_of_field".to_string(), ModuleFunction {
+            name: "depth_of_field".to_string(),
+            callback: crate::modules::graphics::depth_of_field,
+        });
+        
+        graphics_module.functions.insert("screen_shake".to_string(), ModuleFunction {
+            name: "screen_shake".to_string(),
+            callback: crate::modules::graphics::screen_shake,
+        });
+        
+        graphics_module.functions.insert("wind_effect".to_string(), ModuleFunction {
+            name: "wind_effect".to_string(),
+            callback: crate::modules::graphics::wind_effect,
+        });
+        
+        graphics_module.functions.insert("flash".to_string(), ModuleFunction {
+            name: "flash".to_string(),
+            callback: crate::modules::graphics::flash,
+        });
+        
+        graphics_module.functions.insert("lightning_strike".to_string(), ModuleFunction {
+            name: "lightning_strike".to_string(),
+            callback: crate::modules::graphics::lightning_strike,
+        });
+        
+        graphics_module.functions.insert("rainbow_arc".to_string(), ModuleFunction {
+            name: "rainbow_arc".to_string(),
+            callback: crate::modules::graphics::rainbow_arc,
+        });
+        
+        graphics_module.functions.insert("rain_effect".to_string(), ModuleFunction {
+            name: "rain_effect".to_string(),
+            callback: crate::modules::graphics::rain_effect,
+        });
+        
         self.modules.insert("Graphics".to_string(), graphics_module);
         
         // Audio module
@@ -501,6 +621,32 @@ impl Interpreter {
         audio_module.functions.insert("volume".to_string(), ModuleFunction {
             name: "volume".to_string(),
             callback: crate::modules::audio::volume,
+        });
+        
+        // Audio classification functions
+        audio_module.functions.insert("classify_beat".to_string(), ModuleFunction {
+            name: "classify_beat".to_string(),
+            callback: crate::modules::audio::classify_beat,
+        });
+        
+        audio_module.functions.insert("classify_mood".to_string(), ModuleFunction {
+            name: "classify_mood".to_string(),
+            callback: crate::modules::audio::classify_mood,
+        });
+        
+        audio_module.functions.insert("onset_detection".to_string(), ModuleFunction {
+            name: "onset_detection".to_string(),
+            callback: crate::modules::audio::onset_detection,
+        });
+        
+        audio_module.functions.insert("tempo_detection".to_string(), ModuleFunction {
+            name: "tempo_detection".to_string(),
+            callback: crate::modules::audio::tempo_detection,
+        });
+        
+        audio_module.functions.insert("spectral_centroid".to_string(), ModuleFunction {
+            name: "spectral_centroid".to_string(),
+            callback: crate::modules::audio::spectral_centroid,
         });
         
         self.modules.insert("Audio".to_string(), audio_module);

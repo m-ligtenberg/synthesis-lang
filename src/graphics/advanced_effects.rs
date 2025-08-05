@@ -423,3 +423,343 @@ impl Default for TunnelEffect {
         Self::new()
     }
 }
+
+#[derive(Debug, Clone)]
+pub struct BloomEffect {
+    pub threshold: f32,
+    pub intensity: f32,
+    pub radius: f32,
+    pub downsample_passes: u32,
+}
+
+impl BloomEffect {
+    pub fn new() -> Self {
+        Self {
+            threshold: 0.8,
+            intensity: 1.0,
+            radius: 5.0,
+            downsample_passes: 3,
+        }
+    }
+    
+    pub fn apply(&self, input: &[Color], width: u32, height: u32) -> Vec<Color> {
+        // Extract bright pixels above threshold
+        let bright_pixels: Vec<Color> = input.iter().map(|color| {
+            let luminance = color.r * 0.299 + color.g * 0.587 + color.b * 0.114;
+            if luminance > self.threshold {
+                let multiplier = (luminance - self.threshold) / (1.0 - self.threshold);
+                Color::new(
+                    color.r * multiplier * self.intensity,
+                    color.g * multiplier * self.intensity,
+                    color.b * multiplier * self.intensity,
+                    color.a,
+                )
+            } else {
+                Color::new(0.0, 0.0, 0.0, 0.0)
+            }
+        }).collect();
+        
+        // Apply gaussian blur to bright pixels
+        let blurred = self.gaussian_blur(&bright_pixels, width, height);
+        
+        // Combine with original
+        input.iter().zip(blurred.iter()).map(|(original, bloom)| {
+            Color::new(
+                (original.r + bloom.r).min(1.0),
+                (original.g + bloom.g).min(1.0),
+                (original.b + bloom.b).min(1.0),
+                original.a,
+            )
+        }).collect()
+    }
+    
+    fn gaussian_blur(&self, input: &[Color], width: u32, height: u32) -> Vec<Color> {
+        let kernel_size = (self.radius * 2.0) as usize + 1;
+        let sigma = self.radius / 3.0;
+        
+        // Generate gaussian kernel
+        let mut kernel = vec![0.0; kernel_size];
+        let mut sum = 0.0;
+        let center = kernel_size / 2;
+        
+        for i in 0..kernel_size {
+            let x = (i as f32) - (center as f32);
+            let weight = (-0.5 * x * x / (sigma * sigma)).exp();
+            kernel[i] = weight;
+            sum += weight;
+        }
+        
+        // Normalize kernel
+        for weight in &mut kernel {
+            *weight /= sum;
+        }
+        
+        // Horizontal pass
+        let mut temp = vec![Color::new(0.0, 0.0, 0.0, 0.0); input.len()];
+        for y in 0..height {
+            for x in 0..width {
+                let mut result = Color::new(0.0, 0.0, 0.0, 0.0);
+                
+                for i in 0..kernel_size {
+                    let sample_x = (x as i32) + (i as i32) - (center as i32);
+                    if sample_x >= 0 && sample_x < width as i32 {
+                        let idx = (y * width + sample_x as u32) as usize;
+                        let sample = input[idx];
+                        let weight = kernel[i];
+                        
+                        result.r += sample.r * weight;
+                        result.g += sample.g * weight;
+                        result.b += sample.b * weight;
+                        result.a += sample.a * weight;
+                    }
+                }
+                
+                temp[(y * width + x) as usize] = result;
+            }
+        }
+        
+        // Vertical pass
+        let mut result = vec![Color::new(0.0, 0.0, 0.0, 0.0); input.len()];
+        for y in 0..height {
+            for x in 0..width {
+                let mut pixel = Color::new(0.0, 0.0, 0.0, 0.0);
+                
+                for i in 0..kernel_size {
+                    let sample_y = (y as i32) + (i as i32) - (center as i32);
+                    if sample_y >= 0 && sample_y < height as i32 {
+                        let idx = ((sample_y as u32) * width + x) as usize;
+                        let sample = temp[idx];
+                        let weight = kernel[i];
+                        
+                        pixel.r += sample.r * weight;
+                        pixel.g += sample.g * weight;
+                        pixel.b += sample.b * weight;
+                        pixel.a += sample.a * weight;
+                    }
+                }
+                
+                result[(y * width + x) as usize] = pixel;
+            }
+        }
+        
+        result
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct DepthOfFieldEffect {
+    pub focus_distance: f32,
+    pub aperture: f32,
+    pub focal_length: f32,
+}
+
+impl DepthOfFieldEffect {
+    pub fn new() -> Self {
+        Self {
+            focus_distance: 5.0,
+            aperture: 2.8,
+            focal_length: 50.0,
+        }
+    }
+    
+    pub fn apply(&self, input: &[Color], depth_buffer: &[f32], width: u32, height: u32) -> Vec<Color> {
+        let mut result = vec![Color::new(0.0, 0.0, 0.0, 0.0); input.len()];
+        
+        for y in 0..height {
+            for x in 0..width {
+                let idx = (y * width + x) as usize;
+                let depth = depth_buffer[idx];
+                
+                // Calculate circle of confusion
+                let coc = self.circle_of_confusion(depth);
+                let blur_radius = (coc * 10.0).max(0.0) as i32;
+                
+                if blur_radius <= 1 {
+                    result[idx] = input[idx];
+                } else {
+                    // Apply blur based on depth
+                    let mut accumulated = Color::new(0.0, 0.0, 0.0, 0.0);
+                    let mut weight_sum = 0.0;
+                    
+                    for dy in -blur_radius..=blur_radius {
+                        for dx in -blur_radius..=blur_radius {
+                            let sample_x = (x as i32) + dx;
+                            let sample_y = (y as i32) + dy;
+                            
+                            if sample_x >= 0 && sample_x < width as i32 && 
+                               sample_y >= 0 && sample_y < height as i32 {
+                                let sample_idx = ((sample_y as u32) * width + (sample_x as u32)) as usize;
+                                let distance = ((dx * dx + dy * dy) as f32).sqrt();
+                                
+                                if distance <= blur_radius as f32 {
+                                    let weight = 1.0 - (distance / blur_radius as f32);
+                                    let sample = input[sample_idx];
+                                    
+                                    accumulated.r += sample.r * weight;
+                                    accumulated.g += sample.g * weight;
+                                    accumulated.b += sample.b * weight;
+                                    accumulated.a += sample.a * weight;
+                                    weight_sum += weight;
+                                }
+                            }
+                        }
+                    }
+                    
+                    if weight_sum > 0.0 {
+                        result[idx] = Color::new(
+                            accumulated.r / weight_sum,
+                            accumulated.g / weight_sum,
+                            accumulated.b / weight_sum,
+                            accumulated.a / weight_sum,
+                        );
+                    } else {
+                        result[idx] = input[idx];
+                    }
+                }
+            }
+        }
+        
+        result
+    }
+    
+    fn circle_of_confusion(&self, object_distance: f32) -> f32 {
+        if object_distance <= 0.0 {
+            return 0.0;
+        }
+        
+        let focal_plane = 1.0 / ((1.0 / self.focal_length) - (1.0 / self.focus_distance));
+        let object_plane = 1.0 / ((1.0 / self.focal_length) - (1.0 / object_distance));
+        
+        let coc = (self.focal_length / self.aperture) * 
+                  ((object_plane - focal_plane).abs() / object_distance);
+        
+        coc / 1000.0 // Convert to normalized units
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ScreenShakeEffect {
+    pub intensity: f32,
+    pub duration: f32,
+    pub time_remaining: f32,
+    pub frequency: f32,
+    pub current_offset: (f32, f32),
+}
+
+impl ScreenShakeEffect {
+    pub fn new() -> Self {
+        Self {
+            intensity: 0.0,
+            duration: 0.0,
+            time_remaining: 0.0,
+            frequency: 15.0,
+            current_offset: (0.0, 0.0),
+        }
+    }
+    
+    pub fn trigger(&mut self, intensity: f32, duration: f32) {
+        self.intensity = intensity;
+        self.duration = duration;
+        self.time_remaining = duration;
+    }
+    
+    pub fn update(&mut self, dt: f32) {
+        if self.time_remaining > 0.0 {
+            self.time_remaining -= dt;
+            
+            let progress = 1.0 - (self.time_remaining / self.duration);
+            let current_intensity = self.intensity * (1.0 - progress * progress);
+            
+            use rand::Rng;
+            let mut rng = rand::thread_rng();
+            
+            let angle = rng.gen::<f32>() * PI * 2.0;
+            let magnitude = rng.gen::<f32>() * current_intensity;
+            
+            self.current_offset = (
+                angle.cos() * magnitude,
+                angle.sin() * magnitude,
+            );
+        } else {
+            self.current_offset = (0.0, 0.0);
+        }
+    }
+    
+    pub fn get_offset(&self) -> (f32, f32) {
+        self.current_offset
+    }
+    
+    pub fn is_active(&self) -> bool {
+        self.time_remaining > 0.0
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct WindEffect {
+    pub direction: f32, // radians
+    pub strength: f32,
+    pub turbulence: f32,
+    pub time: f32,
+    pub noise: NoiseGenerator,
+}
+
+impl WindEffect {
+    pub fn new() -> Self {
+        Self {
+            direction: 0.0,
+            strength: 1.0,
+            turbulence: 0.5,
+            time: 0.0,
+            noise: NoiseGenerator::new(12345),
+        }
+    }
+    
+    pub fn update(&mut self, dt: f32) {
+        self.time += dt;
+    }
+    
+    pub fn get_force_at(&self, x: f32, y: f32) -> (f32, f32) {
+        // Base wind direction
+        let base_x = self.direction.cos() * self.strength;
+        let base_y = self.direction.sin() * self.strength;
+        
+        // Add turbulence using noise
+        let noise_scale = 0.01;
+        let turbulence_x = self.noise.noise_2d(x * noise_scale, self.time * 0.5) * self.turbulence;
+        let turbulence_y = self.noise.noise_2d((x + 1000.0) * noise_scale, self.time * 0.5) * self.turbulence;
+        
+        (base_x + turbulence_x, base_y + turbulence_y)
+    }
+    
+    pub fn apply_to_particles(&self, particles: &mut [Particle]) {
+        for particle in particles {
+            let force = self.get_force_at(particle.position.0, particle.position.1);
+            particle.velocity.0 += force.0 * 0.1;
+            particle.velocity.1 += force.1 * 0.1;
+        }
+    }
+}
+
+impl Default for BloomEffect {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Default for DepthOfFieldEffect {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Default for ScreenShakeEffect {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Default for WindEffect {
+    fn default() -> Self {
+        Self::new()
+    }
+}

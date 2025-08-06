@@ -8,6 +8,9 @@ pub mod modules;
 pub mod gui;
 pub mod hardware;
 
+#[cfg(test)]
+mod error_translation_test;
+
 pub use compiler::*;
 pub use errors::*;
 pub use parser::*;

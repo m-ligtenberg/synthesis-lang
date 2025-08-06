@@ -1,4 +1,5 @@
 use crate::parser::ast::*;
+use crate::errors::{SynthesisError, ErrorKind};
 use crate::Result;
 use std::collections::HashMap;
 
@@ -341,7 +342,12 @@ impl IRGenerator {
                     BinaryOperator::Subtract => IRInstruction::Sub { dest: dest_reg.clone(), left: left_val, right: right_val },
                     BinaryOperator::Multiply => IRInstruction::Mul { dest: dest_reg.clone(), left: left_val, right: right_val },
                     BinaryOperator::Divide => IRInstruction::Div { dest: dest_reg.clone(), left: left_val, right: right_val },
-                    _ => return Err(anyhow::anyhow!("Unsupported binary operator: {:?}", op.into()),
+                    _ => return Err(SynthesisError::new(
+                        ErrorKind::CompilationFailed,
+                        "The operator you're using is not supported"
+                    )
+                    .with_suggestion("Use supported operators: +, -, *, /, ==, !=, <, >, <=, >=")
+                    .with_docs("https://synthesis-lang.org/docs/operators")),
                 };
 
                 block.instructions.push(instruction);
@@ -424,7 +430,13 @@ impl IRGenerator {
                 match function {
                     "analyze_fft" => {
                         if args.is_empty() {
-                            return Err(anyhow::anyhow!("analyze_fft requires audio input".into());
+                            return Err(SynthesisError::new(
+                                ErrorKind::TypeMismatch,
+                                "analyze_fft() requires audio data as input"
+                            )
+                            .with_suggestion("Use Audio.mic_input() or another audio source")
+                            .with_suggestion("Example: Audio.analyze_fft(audio_data, 8)")
+                            .with_docs("https://synthesis-lang.org/docs/audio#fft-analysis"));
                         }
                         let bands = if args.len() > 1 {
                             8 // Default or extract from args

@@ -3,12 +3,12 @@ use std::collections::HashMap;
 
 pub fn window(args: &[Value]) -> crate::Result<Value> {
     if args.is_empty() {
-        return Err(anyhow::anyhow!("window requires a title argument".into());
+        return Err(crate::errors::synthesis_error(crate::errors::ErrorKind::InvalidExpression, "window requires a title argument"));
     }
     
     let title = match &args[0] {
         Value::String(s) => s.clone(),
-        _ => return Err(anyhow::anyhow!("window title must be a string".into()),
+        _ => return Err(crate::errors::synthesis_error(crate::errors::ErrorKind::TypeMismatch, "window title must be a string")),
     };
     
     let mut params = HashMap::new();
@@ -33,12 +33,12 @@ pub fn window(args: &[Value]) -> crate::Result<Value> {
 
 pub fn button(args: &[Value]) -> crate::Result<Value> {
     if args.is_empty() {
-        return Err(anyhow::anyhow!("button requires a label argument".into());
+        return Err(crate::errors::synthesis_error(crate::errors::ErrorKind::InvalidExpression, "button requires a label argument"));
     }
     
     let label = match &args[0] {
         Value::String(s) => s.clone(),
-        _ => return Err(anyhow::anyhow!("button label must be a string".into()),
+        _ => return Err(crate::errors::synthesis_error(crate::errors::ErrorKind::TypeMismatch, "button label must be a string")),
     };
     
     let mut params = HashMap::new();
@@ -69,21 +69,21 @@ pub fn button(args: &[Value]) -> crate::Result<Value> {
 
 pub fn slider(args: &[Value]) -> crate::Result<Value> {
     if args.len() < 3 {
-        return Err(anyhow::anyhow!("slider requires label, min, max arguments".into());
+        return Err(crate::errors::synthesis_error(crate::errors::ErrorKind::InvalidExpression, "slider requires label, min, max arguments"));
     }
     
     let label = match &args[0] {
         Value::String(s) => s.clone(),
-        _ => return Err(anyhow::anyhow!("slider label must be a string".into()),
+        _ => return Err(crate::errors::synthesis_error(crate::errors::ErrorKind::TypeMismatch, "slider label must be a string")),
     };
     
     let min_val = args[1].as_number()
-        .ok_or_else(|| anyhow::anyhow!("slider min must be a number".into())?;
+        .ok_or_else(|| crate::errors::synthesis_error(crate::errors::ErrorKind::TypeMismatch, "slider min must be a number"))?;
     let max_val = args[2].as_number()
-        .ok_or_else(|| anyhow::anyhow!("slider max must be a number".into())?;
+        .ok_or_else(|| crate::errors::synthesis_error(crate::errors::ErrorKind::TypeMismatch, "slider max must be a number"))?;
     
     if min_val >= max_val {
-        return Err(anyhow::anyhow!("slider min must be less than max".into());
+        return Err(crate::errors::synthesis_error(crate::errors::ErrorKind::InvalidExpression, "slider min must be less than max"));
     }
     
     let default_val = args.get(3)
@@ -106,12 +106,12 @@ pub fn slider(args: &[Value]) -> crate::Result<Value> {
 
 pub fn checkbox(args: &[Value]) -> crate::Result<Value> {
     if args.is_empty() {
-        return Err(anyhow::anyhow!("checkbox requires a label argument".into());
+        return Err(crate::errors::synthesis_error(crate::errors::ErrorKind::InvalidExpression, "checkbox requires a label argument"));
     }
     
     let label = match &args[0] {
         Value::String(s) => s.clone(),
-        _ => return Err(anyhow::anyhow!("checkbox label must be a string".into()),
+        _ => return Err(crate::errors::synthesis_error(crate::errors::ErrorKind::TypeMismatch, "checkbox label must be a string")),
     };
     
     let default_checked = args.get(1)
@@ -132,12 +132,12 @@ pub fn checkbox(args: &[Value]) -> crate::Result<Value> {
 
 pub fn dropdown(args: &[Value]) -> crate::Result<Value> {
     if args.len() < 2 {
-        return Err(anyhow::anyhow!("dropdown requires label and options arguments".into());
+        return Err(crate::errors::synthesis_error(crate::errors::ErrorKind::InvalidExpression, "dropdown requires label and options arguments"));
     }
     
     let label = match &args[0] {
         Value::String(s) => s.clone(),
-        _ => return Err(anyhow::anyhow!("dropdown label must be a string".into()),
+        _ => return Err(crate::errors::synthesis_error(crate::errors::ErrorKind::TypeMismatch, "dropdown label must be a string")),
     };
     
     let options = match &args[1] {
@@ -146,16 +146,16 @@ pub fn dropdown(args: &[Value]) -> crate::Result<Value> {
             for opt in arr {
                 match opt {
                     Value::String(s) => opts.push(s.clone()),
-                    _ => return Err(anyhow::anyhow!("dropdown options must be strings".into()),
+                    _ => return Err(crate::errors::synthesis_error(crate::errors::ErrorKind::TypeMismatch, "dropdown options must be strings")),
                 }
             }
             opts
         }
-        _ => return Err(anyhow::anyhow!("dropdown options must be an array".into()),
+        _ => return Err(crate::errors::synthesis_error(crate::errors::ErrorKind::TypeMismatch, "dropdown options must be an array")),
     };
     
     if options.is_empty() {
-        return Err(anyhow::anyhow!("dropdown must have at least one option".into());
+        return Err(crate::errors::synthesis_error(crate::errors::ErrorKind::InvalidExpression, "dropdown must have at least one option"));
     }
     
     let default_option = args.get(2)
@@ -180,12 +180,12 @@ pub fn dropdown(args: &[Value]) -> crate::Result<Value> {
 
 pub fn control_group(args: &[Value]) -> crate::Result<Value> {
     if args.is_empty() {
-        return Err(anyhow::anyhow!("control_group requires a title argument".into());
+        return Err(crate::errors::synthesis_error(crate::errors::ErrorKind::InvalidExpression, "control_group requires a title argument"));
     }
     
     let title = match &args[0] {
         Value::String(s) => s.clone(),
-        _ => return Err(anyhow::anyhow!("control_group title must be a string".into()),
+        _ => return Err(crate::errors::synthesis_error(crate::errors::ErrorKind::TypeMismatch, "control_group title must be a string")),
     };
     
     println!("GUI.control_group: title='{}'", title);

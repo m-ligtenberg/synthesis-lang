@@ -1,4 +1,5 @@
 use crate::runtime::types::{DataType, Value};
+use crate::runtime::realtime_buffer::{SharedRealtimeBuffer, BufferError};
 use crate::errors::ErrorKind;
 use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex, RwLock};
@@ -95,6 +96,25 @@ pub struct StreamData {
     pub processing_time_us: u64,
 }
 
+// Enhanced StreamData with real-time buffer for performance-critical streams
+#[derive(Debug)]
+pub struct RealtimeStreamData {
+    pub name: String,
+    pub data_type: DataType,
+    pub sample_rate: Option<f32>,
+    pub realtime_buffer: SharedRealtimeBuffer,
+    pub fallback_buffer: VecDeque<f32>, // For compatibility with existing code
+    pub position: usize,
+    pub is_active: bool,
+    pub timestamp: Instant,
+    pub metadata: HashMap<String, Value>,
+    pub processing_chain: Vec<StreamProcessor>,
+    pub latency_target: Duration,
+    pub last_processed: Option<Instant>,
+    pub processing_time_us: u64,
+    pub use_realtime_buffer: bool, // Toggle between buffer types
+}
+
 #[derive(Debug, Clone)]
 pub enum StreamProcessor {
     Filter { cutoff: f32, resonance: f32 },
@@ -112,6 +132,100 @@ pub enum StreamTransformFunction {
     Window,   // Sliding window operations
     FFT,      // Frequency domain transform
     Envelope, // ADSR envelope
+}
+
+// Core stream primitive types
+#[derive(Debug, Clone)]
+pub enum StreamPrimitive {
+    Input {
+        source_type: InputSourceType,
+        callback: Option<String>, // Function name for external input handling
+    },
+    Output {
+        destination_type: OutputDestinationType,
+        format: OutputFormat,
+    },
+    Transform {
+        transform_type: TransformType,
+        parameters: HashMap<String, Value>,
+    },
+    Buffer {
+        size: usize,
+        policy: BufferPolicy,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum InputSourceType {
+    AudioDevice,
+    MidiController,
+    OSC,
+    File { path: String },
+    Generator { waveform: WaveformType },
+    ExternalFunction { name: String },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum OutputDestinationType {
+    AudioDevice,
+    MidiDevice,
+    OSC { host: String, port: u16 },
+    File { path: String },
+    Graphics,
+    ExternalFunction { name: String },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum OutputFormat {
+    Float32,
+    Int16,
+    Midi,
+    OSCMessage,
+    Graphics { format: String },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum TransformType {
+    Gain { amount: f32 },
+    Filter { cutoff: f32, resonance: f32, filter_type: FilterType },
+    Delay { time: f32, feedback: f32 },
+    Reverb { room_size: f32, damping: f32, wet_mix: f32 },
+    Distortion { drive: f32, tone: f32 },
+    Compressor { threshold: f32, ratio: f32, attack: f32, release: f32 },
+    EQ { bands: Vec<EQBand> },
+    Envelope { attack: f32, decay: f32, sustain: f32, release: f32 },
+    Custom { function: String }, // Reference to user-defined transform function
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum FilterType {
+    LowPass,
+    HighPass,
+    BandPass,
+    Notch,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct EQBand {
+    pub frequency: f32,
+    pub gain: f32,
+    pub q_factor: f32,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum WaveformType {
+    Sine,
+    Square,
+    Sawtooth,
+    Triangle,
+    Noise,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum BufferPolicy {
+    Circular,    // Overwrite oldest data when full
+    Blocking,    // Block writes when full
+    Dropping,    // Drop new data when full
 }
 
 impl StreamManager {
@@ -711,6 +825,506 @@ impl StreamManager {
     
     pub fn create_midi_stream(&mut self, name: String) -> crate::Result<()> {
         self.create_stream(name, DataType::MIDI, None)
+    }
+    
+    // Real-time stream management methods
+    
+    pub fn create_realtime_stream(&mut self, name: String, data_type: DataType, sample_rate: Option<f32>, buffer_size: Option<usize>) -> crate::Result<()> {
+        let latency_target = Duration::from_millis(self.real_time_config.target_latency_ms as u64);
+        let buffer_size = buffer_size.unwrap_or(self.real_time_config.buffer_size);
+        
+        // Ensure buffer size is power of 2 for optimal performance
+        let buffer_size = buffer_size.next_power_of_two();
+        
+        let _realtime_buffer = SharedRealtimeBuffer::new(buffer_size)
+            .map_err(|_| crate::SynthesisError::new(ErrorKind::AudioDeviceError, 
+                "Failed to create real-time buffer".to_string()))?;
+        
+        let regular_stream_data = StreamData {
+            name: name.clone(),
+            data_type,
+            sample_rate,
+            buffer: VecDeque::with_capacity(buffer_size),
+            max_buffer_size: buffer_size,
+            position: 0,
+            is_active: false,
+            timestamp: Instant::now(),
+            metadata: {
+                let mut metadata = HashMap::new();
+                metadata.insert("is_realtime".to_string(), Value::Boolean(true));
+                metadata.insert("buffer_type".to_string(), Value::String("realtime_circular".to_string()));
+                metadata
+            },
+            processing_chain: Vec::new(),
+            latency_target,
+            last_processed: None,
+            processing_time_us: 0,
+        };
+        
+        self.streams.insert(name, Arc::new(RwLock::new(regular_stream_data)));
+        Ok(())
+    }
+    
+    pub fn write_to_realtime_stream(&self, name: &str, data: Vec<f32>) -> crate::Result<()> {
+        if let Some(stream) = self.streams.get(name) {
+            let stream_data = stream.read().unwrap();
+            
+            // Check if this is a real-time stream
+            if let Some(Value::Boolean(true)) = stream_data.metadata.get("is_realtime") {
+                drop(stream_data);
+                
+                // Use regular buffer with real-time characteristics
+                let mut stream_data = stream.write().unwrap();
+                
+                // Implement circular buffer behavior for real-time performance
+                let available_space = stream_data.max_buffer_size.saturating_sub(stream_data.buffer.len());
+                
+                if data.len() > available_space {
+                    // Remove old data to make space (circular buffer behavior)
+                    let excess = data.len() - available_space;
+                    for _ in 0..excess {
+                        stream_data.buffer.pop_front();
+                    }
+                }
+                
+                // Add new data
+                for &sample in &data {
+                    stream_data.buffer.push_back(sample);
+                }
+                
+                stream_data.is_active = true;
+                stream_data.timestamp = Instant::now();
+                Ok(())
+            } else {
+                // Fall back to regular stream write
+                drop(stream_data);
+                self.write_to_stream(name, data)
+            }
+        } else {
+            Err(crate::SynthesisError::new(ErrorKind::UnknownModule, format!("Stream '{}' not found", name)))
+        }
+    }
+    
+    pub fn read_from_realtime_stream(&self, name: &str, count: usize) -> crate::Result<Vec<f32>> {
+        if let Some(stream) = self.streams.get(name) {
+            let stream_data = stream.read().unwrap();
+            
+            // Check if this is a real-time stream
+            if let Some(Value::Boolean(true)) = stream_data.metadata.get("is_realtime") {
+                drop(stream_data);
+                
+                let mut stream_data = stream.write().unwrap();
+                
+                // Implement real-time read behavior
+                let available = stream_data.buffer.len().min(count);
+                let mut data = Vec::with_capacity(count);
+                
+                // Read available data
+                for _ in 0..available {
+                    if let Some(sample) = stream_data.buffer.pop_front() {
+                        data.push(sample);
+                    }
+                }
+                
+                // Fill remaining with zeros if underrun (real-time safe behavior)
+                while data.len() < count {
+                    data.push(0.0);
+                    
+                    // Update underrun metrics
+                    let mut metrics = self.performance_metrics.lock().unwrap();
+                    metrics.buffer_underruns += 1;
+                }
+                
+                stream_data.position += count;
+                Ok(data)
+            } else {
+                // Fall back to regular stream read
+                drop(stream_data);
+                self.read_from_stream(name, count)
+            }
+        } else {
+            Err(crate::SynthesisError::new(ErrorKind::UnknownModule, format!("Stream '{}' not found", name)))
+        }
+    }
+    
+    // Core stream primitive implementations
+    
+    pub fn create_input_stream(&mut self, name: String, source_type: InputSourceType) -> crate::Result<()> {
+        let primitive = StreamPrimitive::Input { 
+            source_type: source_type.clone(), 
+            callback: None 
+        };
+        
+        let data_type = match source_type {
+            InputSourceType::AudioDevice | InputSourceType::Generator { .. } => DataType::Audio,
+            InputSourceType::MidiController => DataType::MIDI,
+            InputSourceType::OSC => DataType::Control,
+            InputSourceType::File { .. } => DataType::Generic,
+            InputSourceType::ExternalFunction { .. } => DataType::Generic,
+        };
+        
+        self.create_stream(name.clone(), data_type, None)?;
+        
+        // Add the primitive to the stream metadata
+        if let Some(stream) = self.streams.get(&name) {
+            let mut stream_data = stream.write().unwrap();
+            stream_data.metadata.insert("primitive".to_string(), 
+                Value::String("input".to_string()));
+            stream_data.metadata.insert("source_type".to_string(), 
+                Value::String(format!("{:?}", source_type)));
+        }
+        
+        Ok(())
+    }
+    
+    pub fn create_output_stream(&mut self, name: String, destination_type: OutputDestinationType, format: OutputFormat) -> crate::Result<()> {
+        let _primitive = StreamPrimitive::Output { 
+            destination_type: destination_type.clone(), 
+            format: format.clone()
+        };
+        
+        let data_type = match destination_type {
+            OutputDestinationType::AudioDevice => DataType::Audio,
+            OutputDestinationType::MidiDevice => DataType::MIDI,
+            OutputDestinationType::OSC { .. } => DataType::Control,
+            OutputDestinationType::Graphics => DataType::Visual,
+            OutputDestinationType::File { .. } | OutputDestinationType::ExternalFunction { .. } => DataType::Generic,
+        };
+        
+        self.create_stream(name.clone(), data_type, None)?;
+        
+        // Add the primitive to the stream metadata
+        if let Some(stream) = self.streams.get(&name) {
+            let mut stream_data = stream.write().unwrap();
+            stream_data.metadata.insert("primitive".to_string(), 
+                Value::String("output".to_string()));
+            stream_data.metadata.insert("destination_type".to_string(), 
+                Value::String(format!("{:?}", destination_type)));
+            stream_data.metadata.insert("format".to_string(), 
+                Value::String(format!("{:?}", format)));
+        }
+        
+        Ok(())
+    }
+    
+    pub fn create_transform_stream(&mut self, name: String, transform_type: TransformType) -> crate::Result<()> {
+        let mut parameters = HashMap::new();
+        
+        // Extract parameters from transform type
+        match &transform_type {
+            TransformType::Gain { amount } => {
+                parameters.insert("amount".to_string(), Value::Float(*amount as f64));
+            }
+            TransformType::Filter { cutoff, resonance, filter_type } => {
+                parameters.insert("cutoff".to_string(), Value::Float(*cutoff as f64));
+                parameters.insert("resonance".to_string(), Value::Float(*resonance as f64));
+                parameters.insert("filter_type".to_string(), Value::String(format!("{:?}", filter_type)));
+            }
+            TransformType::Delay { time, feedback } => {
+                parameters.insert("time".to_string(), Value::Float(*time as f64));
+                parameters.insert("feedback".to_string(), Value::Float(*feedback as f64));
+            }
+            TransformType::Reverb { room_size, damping, wet_mix } => {
+                parameters.insert("room_size".to_string(), Value::Float(*room_size as f64));
+                parameters.insert("damping".to_string(), Value::Float(*damping as f64));
+                parameters.insert("wet_mix".to_string(), Value::Float(*wet_mix as f64));
+            }
+            TransformType::Compressor { threshold, ratio, attack, release } => {
+                parameters.insert("threshold".to_string(), Value::Float(*threshold as f64));
+                parameters.insert("ratio".to_string(), Value::Float(*ratio as f64));
+                parameters.insert("attack".to_string(), Value::Float(*attack as f64));
+                parameters.insert("release".to_string(), Value::Float(*release as f64));
+            }
+            TransformType::Custom { function } => {
+                parameters.insert("function".to_string(), Value::String(function.clone()));
+            }
+            _ => {} // Handle other transform types as needed
+        }
+        
+        let _primitive = StreamPrimitive::Transform { 
+            transform_type: transform_type.clone(), 
+            parameters: parameters.clone()
+        };
+        
+        self.create_stream(name.clone(), DataType::Generic, None)?;
+        
+        // Add the primitive and parameters to stream metadata
+        if let Some(stream) = self.streams.get(&name) {
+            let mut stream_data = stream.write().unwrap();
+            stream_data.metadata.insert("primitive".to_string(), 
+                Value::String("transform".to_string()));
+            stream_data.metadata.insert("transform_type".to_string(), 
+                Value::String(format!("{:?}", transform_type)));
+            
+            // Add all parameters to metadata
+            for (key, value) in parameters {
+                stream_data.metadata.insert(format!("param_{}", key), value);
+            }
+        }
+        
+        Ok(())
+    }
+    
+    pub fn create_buffer_stream(&mut self, name: String, size: usize, policy: BufferPolicy) -> crate::Result<()> {
+        let _primitive = StreamPrimitive::Buffer { 
+            size, 
+            policy: policy.clone()
+        };
+        
+        self.create_stream(name.clone(), DataType::Generic, None)?;
+        
+        // Configure the buffer according to the policy
+        if let Some(stream) = self.streams.get(&name) {
+            let mut stream_data = stream.write().unwrap();
+            stream_data.max_buffer_size = size;
+            stream_data.metadata.insert("primitive".to_string(), 
+                Value::String("buffer".to_string()));
+            stream_data.metadata.insert("policy".to_string(), 
+                Value::String(format!("{:?}", policy)));
+            stream_data.metadata.insert("configured_size".to_string(), 
+                Value::Integer(size as i64));
+        }
+        
+        Ok(())
+    }
+    
+    // Advanced stream processing methods utilizing the primitives
+    
+    pub fn process_input_stream(&mut self, stream_name: &str) -> crate::Result<Vec<f32>> {
+        if let Some(stream) = self.streams.get(stream_name) {
+            let stream_data = stream.read().unwrap();
+            
+            if let Some(Value::String(primitive_type)) = stream_data.metadata.get("primitive") {
+                if primitive_type == "input" {
+                    if let Some(Value::String(source_type)) = stream_data.metadata.get("source_type") {
+                        return self.generate_input_data(source_type);
+                    }
+                }
+            }
+        }
+        
+        Err(crate::SynthesisError::new(ErrorKind::UnknownModule, 
+            format!("Stream '{}' is not an input stream or not found", stream_name)))
+    }
+    
+    fn generate_input_data(&self, source_type: &str) -> crate::Result<Vec<f32>> {
+        match source_type {
+            source if source.contains("AudioDevice") => {
+                // Simulate audio input
+                Ok(vec![0.1, 0.2, -0.1, -0.2, 0.0]) // Placeholder
+            }
+            source if source.contains("Generator") => {
+                let sample_rate = 44100.0;
+                let frequency = 440.0; // A4
+                let samples = 128;
+                let mut data = Vec::with_capacity(samples);
+                
+                for i in 0..samples {
+                    let t = i as f32 / sample_rate;
+                    let sample = (2.0 * std::f32::consts::PI * frequency * t).sin();
+                    data.push(sample);
+                }
+                Ok(data)
+            }
+            source if source.contains("MidiController") => {
+                // Simulate MIDI control values
+                Ok(vec![64.0, 65.0, 63.0, 66.0]) // MIDI values (0-127)
+            }
+            source if source.contains("OSC") => {
+                // Simulate OSC control data
+                Ok(vec![0.5, 0.6, 0.4, 0.7])
+            }
+            _ => Ok(vec![0.0; 128]) // Default silence
+        }
+    }
+    
+    pub fn apply_transform_stream(&mut self, input_stream: &str, transform_stream: &str, output_stream: &str) -> crate::Result<()> {
+        // Get input data
+        let input_data = self.read_from_stream(input_stream, 128)?;
+        
+        // Get transform parameters
+        let transform_data = if let Some(stream) = self.streams.get(transform_stream) {
+            stream.read().unwrap()
+        } else {
+            return Err(crate::SynthesisError::new(ErrorKind::UnknownModule, 
+                format!("Transform stream '{}' not found", transform_stream)));
+        };
+        
+        // Apply transformation based on metadata
+        let processed_data = if let Some(Value::String(transform_type)) = transform_data.metadata.get("transform_type") {
+            match transform_type.as_str() {
+                transform_str if transform_str.contains("Gain") => {
+                    if let Some(Value::Float(amount)) = transform_data.metadata.get("param_amount") {
+                        input_data.iter().map(|&x| x * (*amount as f32)).collect()
+                    } else {
+                        input_data
+                    }
+                }
+                transform_str if transform_str.contains("Filter") => {
+                    self.apply_filter_transform(&input_data, &transform_data.metadata)?
+                }
+                transform_str if transform_str.contains("Delay") => {
+                    self.apply_delay_transform(&input_data, &transform_data.metadata)?
+                }
+                transform_str if transform_str.contains("Reverb") => {
+                    self.apply_reverb_transform(&input_data, &transform_data.metadata)?
+                }
+                _ => input_data // Pass-through for unknown transforms
+            }
+        } else {
+            input_data // No transform metadata found
+        };
+        
+        // Write to output stream
+        self.write_to_stream(output_stream, processed_data)?;
+        
+        Ok(())
+    }
+    
+    fn apply_filter_transform(&self, data: &[f32], metadata: &HashMap<String, Value>) -> crate::Result<Vec<f32>> {
+        let cutoff = if let Some(Value::Float(c)) = metadata.get("param_cutoff") {
+            *c as f32
+        } else {
+            0.5 // Default cutoff
+        };
+        
+        let mut filtered = Vec::with_capacity(data.len());
+        let mut prev = 0.0;
+        let alpha = cutoff.min(1.0).max(0.0);
+        
+        for &sample in data {
+            let filtered_sample = prev + alpha * (sample - prev);
+            filtered.push(filtered_sample);
+            prev = filtered_sample;
+        }
+        
+        Ok(filtered)
+    }
+    
+    fn apply_delay_transform(&self, data: &[f32], metadata: &HashMap<String, Value>) -> crate::Result<Vec<f32>> {
+        let delay_time = if let Some(Value::Float(t)) = metadata.get("param_time") {
+            *t as f32
+        } else {
+            0.1 // Default 100ms
+        };
+        
+        let feedback = if let Some(Value::Float(f)) = metadata.get("param_feedback") {
+            *f as f32
+        } else {
+            0.3 // Default feedback
+        };
+        
+        let delay_samples = (delay_time * 44100.0) as usize;
+        let mut delayed = vec![0.0; delay_samples];
+        delayed.extend_from_slice(data);
+        
+        // Apply feedback
+        if feedback > 0.0 {
+            for i in delay_samples..delayed.len() {
+                if i >= delay_samples {
+                    delayed[i] += delayed[i - delay_samples] * feedback;
+                }
+            }
+        }
+        
+        Ok(delayed)
+    }
+    
+    fn apply_reverb_transform(&self, data: &[f32], metadata: &HashMap<String, Value>) -> crate::Result<Vec<f32>> {
+        let room_size = if let Some(Value::Float(r)) = metadata.get("param_room_size") {
+            *r as f32
+        } else {
+            0.5 // Default room size
+        };
+        
+        let wet_mix = if let Some(Value::Float(w)) = metadata.get("param_wet_mix") {
+            *w as f32
+        } else {
+            0.3 // Default wet mix
+        };
+        
+        // Simple reverb simulation using multiple delays
+        let delay1 = (room_size * 0.1 * 44100.0) as usize;
+        let delay2 = (room_size * 0.15 * 44100.0) as usize;
+        let delay3 = (room_size * 0.22 * 44100.0) as usize;
+        
+        let max_delay = delay3;
+        let mut reverb_buffer = vec![0.0; data.len() + max_delay];
+        reverb_buffer[..data.len()].copy_from_slice(data);
+        
+        // Add delayed reflections
+        for i in data.len()..reverb_buffer.len() {
+            let mut reflection = 0.0;
+            
+            if i >= delay1 {
+                reflection += reverb_buffer[i - delay1] * 0.3;
+            }
+            if i >= delay2 {
+                reflection += reverb_buffer[i - delay2] * 0.2;
+            }
+            if i >= delay3 {
+                reflection += reverb_buffer[i - delay3] * 0.15;
+            }
+            
+            reverb_buffer[i] += reflection;
+        }
+        
+        // Mix dry and wet signals
+        let mut output = Vec::with_capacity(data.len());
+        for i in 0..data.len() {
+            let dry = data[i];
+            let wet = reverb_buffer[i];
+            output.push(dry * (1.0 - wet_mix) + wet * wet_mix);
+        }
+        
+        Ok(output)
+    }
+    
+    pub fn process_output_stream(&mut self, stream_name: &str) -> crate::Result<()> {
+        if let Some(stream) = self.streams.get(stream_name) {
+            let stream_data = stream.read().unwrap();
+            
+            if let Some(Value::String(primitive_type)) = stream_data.metadata.get("primitive") {
+                if primitive_type == "output" {
+                    if let Some(Value::String(dest_type)) = stream_data.metadata.get("destination_type") {
+                        let data = stream_data.buffer.iter().cloned().collect::<Vec<f32>>();
+                        return self.output_data(dest_type, &data);
+                    }
+                }
+            }
+        }
+        
+        Err(crate::SynthesisError::new(ErrorKind::UnknownModule, 
+            format!("Stream '{}' is not an output stream or not found", stream_name)))
+    }
+    
+    fn output_data(&self, destination_type: &str, data: &[f32]) -> crate::Result<()> {
+        match destination_type {
+            dest if dest.contains("AudioDevice") => {
+                // Simulate audio output
+                eprintln!("Audio output: {} samples", data.len());
+                Ok(())
+            }
+            dest if dest.contains("Graphics") => {
+                // Simulate graphics output
+                eprintln!("Graphics output: {} data points", data.len());
+                Ok(())
+            }
+            dest if dest.contains("MidiDevice") => {
+                // Simulate MIDI output
+                eprintln!("MIDI output: {} values", data.len());
+                Ok(())
+            }
+            dest if dest.contains("OSC") => {
+                // Simulate OSC output
+                eprintln!("OSC output: {} messages", data.len());
+                Ok(())
+            }
+            _ => {
+                eprintln!("Unknown output destination: {}", destination_type);
+                Ok(())
+            }
+        }
     }
     
     pub fn shutdown(&mut self) -> crate::Result<()> {

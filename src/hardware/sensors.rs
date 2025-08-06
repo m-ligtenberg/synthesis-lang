@@ -64,7 +64,7 @@ impl ArduinoManager {
             port.write_all(command.as_bytes())?;
             port.write_all(b"\n")?;
         } else {
-            return Err(anyhow::anyhow!("Port '{}' not connected", port_name.into());
+            return Err(crate::errors::synthesis_error(crate::errors::ErrorKind::AudioDeviceError, format!("Serial port '{}' not connected", port_name)));
         }
         Ok(())
     }
@@ -96,10 +96,10 @@ impl ArduinoManager {
                     }
                 }
                 Err(ref e) if e.kind() == std::io::ErrorKind::TimedOut => Ok(Vec::new()),
-                Err(e) => Err(anyhow::anyhow!("Serial read error: {}", e.into()),
+                Err(e) => Err(crate::errors::synthesis_error(crate::errors::ErrorKind::AudioDeviceError, format!("Serial port read error: {}", e))),
             }
         } else {
-            Err(anyhow::anyhow!("Port '{}' not connected", port_name.into())
+            Err(crate::errors::synthesis_error(crate::errors::ErrorKind::AudioDeviceError, format!("Serial port '{}' not connected", port_name)))
         }
     }
     

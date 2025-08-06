@@ -1,5 +1,6 @@
 use crate::compiler::ir::*;
 use crate::compiler::{CompilationOptions, CompilationTarget};
+use crate::errors::{SynthesisError, ErrorKind};
 use crate::Result;
 
 /// Code generation utilities for different target platforms
@@ -278,7 +279,12 @@ impl WasmCodeGen {
                         }
                         wasm_instructions.push(WasmInstruction::Call(3)); // graphics_plasma import
                     }
-                    _ => return Err(anyhow::anyhow!("Unsupported graphics primitive: {}", primitive.into()),
+                    _ => return Err(SynthesisError::new(
+                        ErrorKind::CodeGenerationFailed,
+                        format!("Graphics primitive '{}' is not supported in this compilation target", primitive)
+                    )
+                    .with_suggestion("Use supported graphics functions for your target platform")
+                    .with_docs("https://synthesis-lang.org/docs/graphics#compatibility")),
                 }
             }
 
@@ -290,7 +296,13 @@ impl WasmCodeGen {
             }
 
             _ => {
-                return Err(anyhow::anyhow!("Unsupported instruction for WebAssembly generation: {:?}", instruction.into());
+                return Err(SynthesisError::new(
+                    ErrorKind::CodeGenerationFailed,
+                    "This operation is not supported when compiling to WebAssembly"
+                )
+                .with_suggestion("Some advanced features are only available in native compilation")
+                .with_suggestion("Try compiling to native target instead")
+                .with_docs("https://synthesis-lang.org/docs/compilation#webassembly-limitations"));
             }
         }
 
@@ -308,7 +320,12 @@ impl WasmCodeGen {
                     IRConstant::Integer(i) => wasm_instructions.push(WasmInstruction::I32Const(*i as i32)),
                     IRConstant::Float(f) => wasm_instructions.push(WasmInstruction::F64Const(*f)),
                     IRConstant::Boolean(b) => wasm_instructions.push(WasmInstruction::I32Const(if *b { 1 } else { 0 })),
-                    _ => return Err(anyhow::anyhow!("Unsupported constant type".into()),
+                    _ => return Err(SynthesisError::new(
+                        ErrorKind::CodeGenerationFailed,
+                        "This type of constant is not supported"
+                    )
+                    .with_suggestion("Use supported constant types: numbers, strings, booleans")
+                    .with_docs("https://synthesis-lang.org/docs/types#constants")),
                 }
             }
             IRValue::Register(reg) => {
@@ -316,7 +333,12 @@ impl WasmCodeGen {
                 wasm_instructions.push(WasmInstruction::LocalGet(reg.id as u32));
             }
             IRValue::Global(_name) => {
-                return Err(anyhow::anyhow!("Global variables not yet supported".into());
+                return Err(SynthesisError::new(
+                    ErrorKind::CodeGenerationFailed,
+                    "Global variables are not yet supported"
+                )
+                .with_suggestion("Use function parameters or local variables instead")
+                .with_suggestion("This feature is planned for a future release"));
             }
         }
         Ok(())
@@ -496,7 +518,13 @@ impl RegisterAllocator {
                 self.virtual_registers.insert(virtual_reg, self.free_registers[i].clone());
             } else {
                 // Would need to spill to memory in a real implementation
-                return Err(anyhow::anyhow!("Not enough physical registers".into());
+                return Err(SynthesisError::new(
+                    ErrorKind::OptimizationFailed,
+                    "Your code is too complex for the available processor registers"
+                )
+                .with_suggestion("Try simplifying your expressions")
+                .with_suggestion("Break complex calculations into smaller steps")
+                .with_docs("https://synthesis-lang.org/docs/performance#optimization"));
             }
         }
 

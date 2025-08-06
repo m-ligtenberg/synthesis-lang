@@ -20,12 +20,24 @@ Synthesis is a universal creative programming language designed for artists, mus
 cargo build --release                # Release build
 cargo build                         # Debug build
 cargo test                          # Run tests
+cargo test error_translation         # Run error translation tests specifically
 ```
 
 ### Testing
 ```bash
-./build.synt test                    # Run test suite
-./build.synt test --verbose         # Run tests with verbose output
+# Run entire test suite
+./build.synt test                    # Standard test suite
+./build.synt test --verbose         # Verbose test output
+
+# Direct cargo testing (for development)
+cargo test                          # Run all tests
+cargo test -- --nocapture           # Show test output during execution
+
+# Specific test categories
+cargo test error_translation         # Run only error translation tests
+cargo test --test error_translation_test  # Alternative syntax for error tests
+cargo test integration              # Run integration tests in errors module
+cargo test --lib errors             # Test the errors module specifically
 ```
 
 ### Installation & Distribution
@@ -45,8 +57,14 @@ syn-pkg test                        # Run tests defined in package.syn
 ## Architecture Overview
 
 ### Core Components
+- **Error Translation** (`src/errors/`): 
+  * User-friendly error system that hides Rust internals
+  * Contextual error suggestions with emojis and documentation links
+  * Automatic type and message translation (f32→Number, String→Text, etc.)
+  * Pattern-based error matching and transformation utilities
 - **Parser/Lexer** (`src/parser/`): Language parsing with nom combinator library
 - **Runtime** (`src/runtime/`): Stream-based interpreter with real-time optimizations
+- **Compiler/IR** (`src/compiler/`): Intermediate representation and optimization
 - **Graphics** (`src/graphics/`): wgpu-based rendering with creative effects
 - **Audio** (`src/audio/`): Real-time audio processing with cpal
 - **GUI** (`src/gui/`): Immediate-mode interface with egui
@@ -128,8 +146,17 @@ loop {
 ### Module Development
 - New built-in modules go in `src/modules/`
 - Follow established patterns: stream-based APIs, percentage coordinates
-- Add comprehensive error handling
+- Add comprehensive error handling using the error translation system
 - Include examples in the module documentation
+
+### Error Handling in Module Development
+- Use `synthesis_error_from!` macro for consistent error translation with context
+- Provide domain-specific error messages that guide creative programmers
+- Include actionable suggestions in error messages (use `.with_suggestion()`)
+- Test error paths thoroughly in module tests to ensure good user experience
+- Aim for educational, contextual error messages rather than technical Rust details
+- Use `execute_with_translation()` for operations that might fail
+- Add documentation links with `.with_docs()` when helpful
 
 ## Performance Requirements
 - **Audio**: Real-time processing at 48kHz with <1ms latency
@@ -157,9 +184,44 @@ loop {
 - `native`: Default native binary (fastest)
 - `wasm32-unknown-unknown`: WebAssembly target
 - Cross-compilation available for Linux, macOS, Windows
+- **Error Translation**: Consistent user-friendly messaging across all targets
+
+## Error Handling Philosophy
+
+### User-Friendly Error Translation
+- **Comprehensive Error Transformation**: Convert complex Rust errors into domain-specific, creative programming context
+- **Error Pattern Matching**: Use regex to identify and translate specific error types (E0283, E0599, E0425, E0308)
+- **Type Name Normalization**: 
+  * `f32`/`f64` → `Number`
+  * `String`/`&str` → `Text`
+  * `Vec<T>` → `List`
+  * `AudioBuffer` → `Audio`
+  * `GraphicsContext` → `Graphics`
+- **Contextual Suggestions**: Errors provide specific, actionable suggestions with emojis and documentation links
+- **Implementation Hiding**: Users never see raw Rust compiler messages or internal types
+
+### Error Translation Utilities
+- `synthesis_error_from!` macro for easy error conversion with context
+- `execute_with_translation()` for safe operation execution with automatic error handling
+- `translate_std_error()` for standard library error handling
+- `compilation_error()` for phase-specific compilation errors (parsing, type_checking, code_generation, optimization)
+- `catch_rust_panic!` macro for intercepting and translating Rust panics
+- Automatic fallback to generic error messages with context-aware suggestions
+
+### Error Testing Approach
+- Comprehensive test coverage in `src/error_translation_test.rs`
+- Integration utilities tested in `src/errors/integration.rs`
+- Test error patterns across different compilation phases:
+  * Parsing errors
+  * Type checking and inference errors
+  * Code generation failures
+  * Optimization issues
+- Verify both error matching accuracy and translation quality
+- Ensure no Rust internals leak through to users
 
 ## Notes
 - This is a creative programming language focused on real-time performance
 - The build system intentionally hides Rust implementation details from users
 - Stream-based programming model is central to the language design
 - Graphics and audio systems are optimized for live performance scenarios
+- Error messages are designed to be educational and domain-specific for creative programming

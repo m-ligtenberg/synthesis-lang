@@ -67,17 +67,17 @@ pub fn starfield(args: &[Value]) -> crate::Result<Value> {
 
 pub fn rect(args: &[Value]) -> crate::Result<Value> {
     if args.len() < 4 {
-        return Err(anyhow::anyhow!("rect requires x, y, width, height arguments".into());
+        return Err(crate::errors::synthesis_error(crate::errors::ErrorKind::InvalidExpression, "rect requires x, y, width, height arguments"));
     }
     
     let x = args[0].as_number()
-        .ok_or_else(|| anyhow::anyhow!("rect x must be a number".into())?;
+        .ok_or_else(|| crate::errors::synthesis_error(crate::errors::ErrorKind::TypeMismatch, "rect x must be a number"))?;
     let y = args[1].as_number()
-        .ok_or_else(|| anyhow::anyhow!("rect y must be a number".into())?;
+        .ok_or_else(|| crate::errors::synthesis_error(crate::errors::ErrorKind::TypeMismatch, "rect y must be a number"))?;
     let width = args[2].as_number()
-        .ok_or_else(|| anyhow::anyhow!("rect width must be a number".into())?;
+        .ok_or_else(|| crate::errors::synthesis_error(crate::errors::ErrorKind::TypeMismatch, "rect width must be a number"))?;
     let height = args[3].as_number()
-        .ok_or_else(|| anyhow::anyhow!("rect height must be a number".into())?;
+        .ok_or_else(|| crate::errors::synthesis_error(crate::errors::ErrorKind::TypeMismatch, "rect height must be a number"))?;
     
     let color = args.get(4)
         .and_then(|v| v.as_number())
@@ -90,18 +90,18 @@ pub fn rect(args: &[Value]) -> crate::Result<Value> {
 
 pub fn circle(args: &[Value]) -> crate::Result<Value> {
     if args.len() < 3 {
-        return Err(anyhow::anyhow!("circle requires x, y, radius arguments".into());
+        return Err(anyhow::anyhow!("circle requires x, y, radius arguments").into());
     }
     
     let x = args[0].as_number()
-        .ok_or_else(|| anyhow::anyhow!("circle x must be a number".into())?;
+        .ok_or_else(|| anyhow::anyhow!("circle x must be a number").into())?;
     let y = args[1].as_number()
-        .ok_or_else(|| anyhow::anyhow!("circle y must be a number".into())?;
+        .ok_or_else(|| anyhow::anyhow!("circle y must be a number").into())?;
     let radius = args[2].as_number()
-        .ok_or_else(|| anyhow::anyhow!("circle radius must be a number".into())?;
+        .ok_or_else(|| crate::errors::synthesis_error(crate::errors::ErrorKind::TypeMismatch, "circle radius must be a number"))?;
     
     if radius <= 0.0 {
-        return Err(anyhow::anyhow!("circle radius must be positive".into());
+        return Err(crate::errors::synthesis_error(crate::errors::ErrorKind::InvalidExpression, "circle radius must be positive"));
     }
     
     let color = args.get(3)
@@ -115,17 +115,17 @@ pub fn circle(args: &[Value]) -> crate::Result<Value> {
 
 pub fn line(args: &[Value]) -> crate::Result<Value> {
     if args.len() < 4 {
-        return Err(anyhow::anyhow!("line requires x1, y1, x2, y2 arguments".into());
+        return Err(crate::errors::synthesis_error(crate::errors::ErrorKind::InvalidExpression, "line requires x1, y1, x2, y2 arguments"));
     }
     
     let x1 = args[0].as_number()
-        .ok_or_else(|| anyhow::anyhow!("line x1 must be a number".into())?;
+        .ok_or_else(|| crate::errors::synthesis_error(crate::errors::ErrorKind::TypeMismatch, "line x1 must be a number"))?;
     let y1 = args[1].as_number()
-        .ok_or_else(|| anyhow::anyhow!("line y1 must be a number".into())?;
+        .ok_or_else(|| crate::errors::synthesis_error(crate::errors::ErrorKind::TypeMismatch, "line y1 must be a number"))?;
     let x2 = args[2].as_number()
-        .ok_or_else(|| anyhow::anyhow!("line x2 must be a number".into())?;
+        .ok_or_else(|| crate::errors::synthesis_error(crate::errors::ErrorKind::TypeMismatch, "line x2 must be a number"))?;
     let y2 = args[3].as_number()
-        .ok_or_else(|| anyhow::anyhow!("line y2 must be a number".into())?;
+        .ok_or_else(|| crate::errors::synthesis_error(crate::errors::ErrorKind::TypeMismatch, "line y2 must be a number"))?;
     
     let color = args.get(4)
         .and_then(|v| v.as_number())
@@ -138,18 +138,18 @@ pub fn line(args: &[Value]) -> crate::Result<Value> {
 
 pub fn text(args: &[Value]) -> crate::Result<Value> {
     if args.len() < 3 {
-        return Err(anyhow::anyhow!("text requires text, x, y arguments".into());
+        return Err(crate::errors::synthesis_error(crate::errors::ErrorKind::InvalidExpression, "text requires text, x, y arguments"));
     }
     
     let text_content = match &args[0] {
         Value::String(s) => s.clone(),
-        _ => return Err(anyhow::anyhow!("text content must be a string".into()),
+        _ => return Err(crate::errors::synthesis_error(crate::errors::ErrorKind::TypeMismatch, "text content must be a string")),
     };
     
     let x = args[1].as_number()
-        .ok_or_else(|| anyhow::anyhow!("text x must be a number".into())?;
+        .ok_or_else(|| crate::errors::synthesis_error(crate::errors::ErrorKind::TypeMismatch, "text x must be a number"))?;
     let y = args[2].as_number()
-        .ok_or_else(|| anyhow::anyhow!("text y must be a number".into())?;
+        .ok_or_else(|| crate::errors::synthesis_error(crate::errors::ErrorKind::TypeMismatch, "text y must be a number"))?;
     
     let color = args.get(3)
         .and_then(|v| v.as_number())
@@ -168,12 +168,12 @@ pub fn text(args: &[Value]) -> crate::Result<Value> {
 
 pub fn particle_system(args: &[Value]) -> crate::Result<Value> {
     if args.is_empty() {
-        return Err(anyhow::anyhow!("particle_system requires a name argument".into());
+        return Err(crate::errors::synthesis_error(crate::errors::ErrorKind::InvalidExpression, "particle_system requires a name argument"));
     }
     
     let name = match &args[0] {
         Value::String(s) => s.clone(),
-        _ => return Err(anyhow::anyhow!("particle system name must be a string".into()),
+        _ => return Err(crate::errors::synthesis_error(crate::errors::ErrorKind::TypeMismatch, "particle system name must be a string")),
     };
     
     println!("Graphics.particle_system: Creating '{}' particle system", name);

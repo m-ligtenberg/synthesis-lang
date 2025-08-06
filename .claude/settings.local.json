@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cargo check:*)",
+      "Bash(cargo:*)",
+      "WebFetch",
+      "Everything",
+      "Bash(mkdir:*)",
+      "Bash(cp:*)",
+      "Bash(find:*)",
+      "Bash(sed:*)",
+      "Bash(grep:*)"
+    ],
+    "deny": []
+  }
+}

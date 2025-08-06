@@ -219,6 +219,7 @@ pub enum StringPart {
 pub enum Literal {
     Integer(i64),
     Float(f64),
+    Percentage(f64),
     String(String),
     Boolean(bool),
 }

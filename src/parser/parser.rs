@@ -1,4 +1,5 @@
 use crate::parser::{ast::*, lexer::Token};
+use crate::errors::{SynthesisError, ErrorKind, SourceLocation};
 use std::collections::HashMap;
 
 pub struct Parser<'a> {
@@ -58,7 +59,13 @@ impl<'a> Parser<'a> {
                 self.advance();
                 name
             }
-            _ => return Err(anyhow::anyhow!("Expected module name after import".into()),
+            _ => return Err(SynthesisError::new(
+                ErrorKind::SyntaxError,
+                "Expected module name after 'import'"
+            )
+            .with_suggestion("Add a module name like: import Audio")
+            .with_suggestion("Available modules: Audio, Graphics, GUI, Hardware, Math, Time")
+            .with_docs("https://synthesis-lang.org/docs/modules")),
         };
         
         let items = if self.match_token(&Token::Dot) {
@@ -112,10 +119,35 @@ impl<'a> Parser<'a> {
         let mut statements = Vec::new();
         
         while !self.match_token(&Token::RightBrace) && !self.is_at_end() {
-            statements.push(self.parse_statement()?);
+            match self.parse_statement() {
+                Ok(stmt) => statements.push(stmt),
+                Err(err) => {
+                    // Error recovery: skip to next likely statement start or block end
+                    self.synchronize_after_error();
+                    // Re-throw the error with recovery context
+                    return Err(err.with_suggestion("Parser recovered and continued after this error"));
+                }
+            }
         }
         
         Ok(statements)
+    }
+
+    /// Skip tokens until we find a likely place to resume parsing
+    fn synchronize_after_error(&mut self) {
+        self.advance(); // Skip the problematic token
+        
+        while !self.is_at_end() {
+            // Stop at statement boundaries
+            match self.current_token() {
+                Some(Token::Let) | Some(Token::If) | Some(Token::While) | 
+                Some(Token::For) | Some(Token::Match) | Some(Token::Every) | 
+                Some(Token::After) | Some(Token::RightBrace) => return,
+                _ => {}
+            }
+            
+            self.advance();
+        }
     }
     
     fn parse_statement(&mut self) -> crate::Result<Statement> {
@@ -125,6 +157,8 @@ impl<'a> Parser<'a> {
             Some(Token::Every) => self.parse_temporal_statement(),
             Some(Token::After) => self.parse_temporal_statement(),
             Some(Token::While) => self.parse_temporal_statement(),
+            Some(Token::For) => self.parse_for_statement(),
+            Some(Token::Let) => self.parse_let_statement(),
             Some(Token::Identifier(_)) if self.peek_token(1) == Some(&Token::Assignment) => {
                 self.parse_assignment()
             }
@@ -142,7 +176,12 @@ impl<'a> Parser<'a> {
                 self.advance();
                 name
             }
-            _ => return Err(anyhow::anyhow!("Expected identifier in assignment".into()),
+            _ => return Err(SynthesisError::new(
+                ErrorKind::SyntaxError,
+                "Expected variable name in assignment"
+            )
+            .with_suggestion("Variable names should start with a letter")
+            .with_suggestion("Example: my_variable = Audio.mic_input()")),
         };
         
         self.consume_token(Token::Assignment)?;
@@ -236,6 +275,11 @@ impl<'a> Parser<'a> {
                 self.advance();
                 Ok(Pattern::Literal(Literal::Float(val)))
             }
+            Some(Token::Percentage(val)) => {
+                let val = *val;
+                self.advance();
+                Ok(Pattern::Literal(Literal::Percentage(val)))
+            }
             Some(Token::String(val)) => {
                 let val = val.clone();
                 self.advance();
@@ -246,7 +290,19 @@ impl<'a> Parser<'a> {
                 self.advance();
                 Ok(Pattern::Literal(Literal::Boolean(val)))
             }
-            _ => Err(anyhow::anyhow!("Expected pattern".into()),
+            _ => {
+                let found_desc = self.current_token()
+                    .map(token_description)
+                    .unwrap_or("end of file".to_string());
+                
+                Err(SynthesisError::new(
+                    ErrorKind::InvalidExpression,
+                    format!("Invalid pattern: {}", found_desc)
+                )
+                .with_suggestion("Pattern matching supports numbers, strings, and wildcards")
+                .with_suggestion("Use _ for catch-all patterns")
+                .with_docs("https://synthesis-lang.org/docs/pattern-matching"))
+            }
         }
     }
     
@@ -274,15 +330,104 @@ impl<'a> Parser<'a> {
                 Ok(Statement::After { duration, body })
             }
             Token::While => {
-                self.consume_token(Token::LeftParen)?;
                 let condition = self.parse_expression()?;
-                self.consume_token(Token::RightParen)?;
                 self.consume_token(Token::LeftBrace)?;
                 let body = self.parse_statements()?;
                 self.consume_token(Token::RightBrace)?;
                 Ok(Statement::While { condition, body })
             }
-            _ => Err(anyhow::anyhow!("Unexpected temporal token".into()),
+            _ => Err(SynthesisError::new(
+                ErrorKind::UnexpectedToken,
+                "Invalid temporal statement"
+            )
+            .with_suggestion("Use 'every', 'after', or 'while' for time-based logic")
+            .with_suggestion("Example: every(1.seconds) { ... }")
+            .with_docs("https://synthesis-lang.org/docs/time")),
+        }
+    }
+
+    fn parse_for_statement(&mut self) -> crate::Result<Statement> {
+        self.consume_token(Token::For)?;
+        
+        let variable = match self.current_token() {
+            Some(Token::Identifier(name)) => {
+                let name = name.clone();
+                self.advance();
+                name
+            }
+            _ => return Err(SynthesisError::new(
+                ErrorKind::SyntaxError,
+                "Expected variable name in for loop"
+            )
+            .with_suggestion("for loops need a variable: for item in list { ... }")
+            .with_suggestion("Example: for i in 0..10 { ... }")),
+        };
+        
+        self.consume_token(Token::In)?;
+        let iterable = self.parse_expression()?;
+        
+        self.consume_token(Token::LeftBrace)?;
+        let body = self.parse_statements()?;
+        self.consume_token(Token::RightBrace)?;
+        
+        Ok(Statement::For {
+            variable,
+            iterable,
+            body,
+        })
+    }
+
+    fn parse_let_statement(&mut self) -> crate::Result<Statement> {
+        self.consume_token(Token::Let)?;
+        
+        let name = match self.current_token() {
+            Some(Token::Identifier(name)) => {
+                let name = name.clone();
+                self.advance();
+                name
+            }
+            _ => return Err(SynthesisError::new(
+                ErrorKind::SyntaxError,
+                "Expected variable name after 'let'"
+            )
+            .with_suggestion("let statements need a variable name")
+            .with_suggestion("Example: let frequency = 440.0")),
+        };
+        
+        let type_annotation = if self.match_token(&Token::Colon) {
+            self.advance();
+            Some(self.parse_type_annotation()?)
+        } else {
+            None
+        };
+        
+        let value = if self.match_token(&Token::Assignment) {
+            self.advance();
+            Some(self.parse_expression()?)
+        } else {
+            None
+        };
+        
+        Ok(Statement::Let {
+            name,
+            type_annotation,
+            value,
+        })
+    }
+
+    fn parse_type_annotation(&mut self) -> crate::Result<TypeAnnotation> {
+        match self.current_token() {
+            Some(Token::Identifier(name)) => {
+                let name = name.clone();
+                self.advance();
+                Ok(TypeAnnotation::Simple(name))
+            }
+            _ => Err(SynthesisError::new(
+                ErrorKind::SyntaxError,
+                "Expected type name in type annotation"
+            )
+            .with_suggestion("Common types: Audio, Graphics, Number, Text, Stream")
+            .with_docs("https://synthesis-lang.org/docs/types")),
         }
     }
     
@@ -331,15 +476,32 @@ impl<'a> Parser<'a> {
     }
     
     fn parse_comparison(&mut self) -> crate::Result<Expression> {
-        let mut expr = self.parse_term()?;
+        let mut expr = self.parse_range()?;
         
         while let Some(op) = self.match_comparison_op() {
             self.advance();
-            let right = self.parse_term()?;
+            let right = self.parse_range()?;
             expr = Expression::BinaryOp {
                 left: Box::new(expr),
                 op,
                 right: Box::new(right),
+            };
+        }
+        
+        Ok(expr)
+    }
+
+    fn parse_range(&mut self) -> crate::Result<Expression> {
+        let mut expr = self.parse_term()?;
+        
+        if self.match_token(&Token::Range) || self.match_token(&Token::RangeInclusive) {
+            let inclusive = self.match_token(&Token::RangeInclusive);
+            self.advance();
+            let end = self.parse_term()?;
+            expr = Expression::Range {
+                start: Box::new(expr),
+                end: Box::new(end),
+                inclusive,
             };
         }
         
@@ -399,7 +561,12 @@ impl<'a> Parser<'a> {
                         named_args: HashMap::new(),
                     };
                 } else {
-                    return Err(anyhow::anyhow!("Invalid function call".into());
+                    return Err(SynthesisError::new(
+                    ErrorKind::SyntaxError,
+                    "Invalid function call syntax"
+                )
+                .with_suggestion("Function calls need parentheses: function_name()")
+                .with_suggestion("Module functions: Module.function_name()"));
                 }
             } else if self.match_token(&Token::LeftBracket) {
                 self.advance();
@@ -430,10 +597,20 @@ impl<'a> Parser<'a> {
                 self.advance();
                 Ok(Expression::Literal(Literal::Float(f)))
             }
+            Some(Token::Percentage(p)) => {
+                let p = *p;
+                self.advance();
+                Ok(Expression::Literal(Literal::Percentage(p)))
+            }
             Some(Token::String(s)) => {
                 let s = s.clone();
                 self.advance();
                 Ok(Expression::Literal(Literal::String(s)))
+            }
+            Some(Token::InterpolatedString(parts)) => {
+                let parts = parts.clone();
+                self.advance();
+                Ok(Expression::InterpolatedString(parts))
             }
             Some(Token::Boolean(b)) => {
                 let b = *b;
@@ -461,10 +638,20 @@ impl<'a> Parser<'a> {
                             unit,
                         })
                     } else {
-                        Err(anyhow::anyhow!("Invalid unit value: {}", unit_string.into())
+                        Err(SynthesisError::new(
+                            ErrorKind::InvalidExpression,
+                            format!("Unit value '{}' is not valid", unit_string)
+                        )
+                        .with_suggestion("Unit values should be like: 3.5.seconds, 440.hz, 0.5.volume")
+                        .with_docs("https://synthesis-lang.org/docs/units"))
                     }
                 } else {
-                    Err(anyhow::anyhow!("Invalid unit format: {}", unit_string.into())
+                    Err(SynthesisError::new(
+                        ErrorKind::InvalidExpression,
+                        format!("Unit format '{}' is invalid", unit_string)
+                    )
+                    .with_suggestion("Use format: number.unit (like 3.seconds or 440.hz)")
+                    .with_docs("https://synthesis-lang.org/docs/units"))
                 }
             }
             Some(Token::Identifier(name)) => {
@@ -489,10 +676,21 @@ impl<'a> Parser<'a> {
                                 named_args,
                             })
                         } else {
-                            Ok(Expression::Identifier(format!("{}.{}", name, func_name)))
+                            // This is a method call without parentheses (property access)
+                            Ok(Expression::MethodCall {
+                                object: Box::new(Expression::Identifier(name)),
+                                method: func_name,
+                                args: Vec::new(),
+                                named_args: HashMap::new(),
+                            })
                         }
                     } else {
-                        Err(anyhow::anyhow!("Expected function name after dot".into())
+                        Err(SynthesisError::new(
+                            ErrorKind::SyntaxError,
+                            "Expected function name after '.'"
+                        )
+                        .with_suggestion("Module functions: Module.function_name()")
+                        .with_suggestion("Example: Audio.mic_input(), Graphics.clear()"))
                     }
                 } else {
                     Ok(Expression::Identifier(name))
@@ -503,6 +701,9 @@ impl<'a> Parser<'a> {
                 let expr = self.parse_expression()?;
                 self.consume_token(Token::RightParen)?;
                 Ok(expr)
+            }
+            Some(Token::LeftBracket) => {
+                self.parse_array_literal()
             }
             Some(Token::LeftBrace) => {
                 self.parse_block()
@@ -518,10 +719,41 @@ impl<'a> Parser<'a> {
                     count,
                 })
             }
-            _ => Err(anyhow::anyhow!("Unexpected token in expression".into()),
+            _ => {
+                let found_desc = self.current_token()
+                    .map(token_description)
+                    .unwrap_or("end of file".to_string());
+                
+                Err(SynthesisError::new(
+                    ErrorKind::UnexpectedToken,
+                    format!("Unexpected {} in expression", found_desc)
+                )
+                .with_suggestion("Check the syntax around this area")
+                .with_suggestion("Look for missing punctuation or operators")
+                .with_docs("https://synthesis-lang.org/docs/syntax"))
+            }
         }
     }
     
+    fn parse_array_literal(&mut self) -> crate::Result<Expression> {
+        self.consume_token(Token::LeftBracket)?;
+        
+        let mut elements = Vec::new();
+        
+        while !self.match_token(&Token::RightBracket) && !self.is_at_end() {
+            elements.push(self.parse_expression()?);
+            
+            if self.match_token(&Token::Comma) {
+                self.advance();
+            } else {
+                break;
+            }
+        }
+        
+        self.consume_token(Token::RightBracket)?;
+        Ok(Expression::ArrayLiteral(elements))
+    }
+
     fn parse_block(&mut self) -> crate::Result<Expression> {
         self.consume_token(Token::LeftBrace)?;
         
@@ -563,7 +795,12 @@ impl<'a> Parser<'a> {
                             self.advance();
                             name
                         }
-                        _ => return Err(anyhow::anyhow!("Expected identifier in named argument".into()),
+                        _ => return Err(SynthesisError::new(
+                            ErrorKind::SyntaxError,
+                            "Expected parameter name in function call"
+                        )
+                        .with_suggestion("Named parameters: function(name: value)")
+                        .with_suggestion("Example: Audio.apply_reverb(room_size: 0.8)")),
                     };
                     
                     self.consume_token(Token::Colon)?;
@@ -621,10 +858,30 @@ impl<'a> Parser<'a> {
             self.advance();
             Ok(())
         } else {
-            Err(anyhow::anyhow!("Expected {:?}, found {:?}", expected, self.current_token(.into()).into())
+            let expected_desc = token_description(&expected);
+            let found_desc = self.current_token()
+                .map(token_description)
+                .unwrap_or("end of file".to_string());
+            
+            Err(SynthesisError::new(
+                ErrorKind::UnexpectedToken,
+                format!("Expected {} but found {}", expected_desc, found_desc)
+            )
+            .with_suggestion("Check your syntax for missing punctuation")
+            .with_suggestion("Make sure all blocks are properly closed with }")
+            .with_docs("https://synthesis-lang.org/docs/syntax"))
         }
     }
     
+    /// Create a source location for error reporting
+    fn current_location(&self, filename: &str) -> SourceLocation {
+        SourceLocation {
+            line: 1, // TODO: Track line numbers in lexer
+            column: self.position,
+            filename: filename.to_string(),
+        }
+    }
+
     fn match_equality_op(&self) -> Option<BinaryOperator> {
         match self.current_token() {
             Some(Token::Equals) => Some(BinaryOperator::Equal),
@@ -657,5 +914,55 @@ impl<'a> Parser<'a> {
             Some(Token::Divide) => Some(BinaryOperator::Divide),
             _ => None,
         }
+    }
+}
+
+/// Convert tokens to user-friendly descriptions
+fn token_description(token: &Token) -> String {
+    match token {
+        Token::LeftBrace => "{".to_string(),
+        Token::RightBrace => "}".to_string(),
+        Token::LeftParen => "(".to_string(),
+        Token::RightParen => ")".to_string(),
+        Token::LeftBracket => "[".to_string(),
+        Token::RightBracket => "]".to_string(),
+        Token::Comma => ",".to_string(),
+        Token::Colon => ":".to_string(),
+        Token::Dot => ".".to_string(),
+        Token::Assignment => "=".to_string(),
+        Token::Arrow => "->".to_string(),
+        Token::Import => "import".to_string(),
+        Token::Loop => "loop".to_string(),
+        Token::If => "if".to_string(),
+        Token::Else => "else".to_string(),
+        Token::Match => "match".to_string(),
+        Token::Every => "every".to_string(),
+        Token::After => "after".to_string(),
+        Token::While => "while".to_string(),
+        Token::For => "for".to_string(),
+        Token::In => "in".to_string(),
+        Token::Func => "func".to_string(),
+        Token::Let => "let".to_string(),
+        Token::Return => "return".to_string(),
+        Token::Plus => "+".to_string(),
+        Token::Minus => "-".to_string(),
+        Token::Multiply => "*".to_string(),
+        Token::Divide => "/".to_string(),
+        Token::Equals => "==".to_string(),
+        Token::NotEqual => "!=".to_string(),
+        Token::LessThan => "<".to_string(),
+        Token::LessThanOrEqual => "<=".to_string(),
+        Token::GreaterThan => ">".to_string(),
+        Token::GreaterThanOrEqual => ">=".to_string(),
+        Token::Identifier(name) => format!("identifier '{}'", name),
+        Token::Integer(num) => format!("number {}", num),
+        Token::Float(num) => format!("number {}", num),
+        Token::Percentage(num) => format!("percentage {}%", num * 100.0),
+        Token::String(s) => format!("string \"{}\"", s),
+        Token::Boolean(b) => format!("boolean {}", b),
+        Token::Unit(u) => format!("unit value {}", u),
+        Token::Newline => "newline".to_string(),
+        Token::Eof => "end of file".to_string(),
+        _ => format!("{:?}", token).to_lowercase(),
     }
 }

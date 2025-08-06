@@ -35,7 +35,15 @@ impl Renderer {
                 force_fallback_adapter: false,
             })
             .await
-            .ok_or_else(|| anyhow::anyhow!("Failed to find an appropriate adapter".into())?;
+            .ok_or_else(|| -> crate::errors::SynthesisError { 
+                crate::errors::SynthesisError::new(
+                    crate::errors::ErrorKind::GraphicsContextError,
+                    "No compatible graphics device found"
+                )
+                .with_suggestion("Make sure your graphics drivers are up to date")
+                .with_suggestion("Check if your GPU supports WebGPU/Vulkan")
+                .with_docs("https://synthesis-lang.org/docs/graphics#compatibility")
+            })?;
 
         let (device, queue) = adapter
             .request_device(

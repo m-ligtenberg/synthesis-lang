@@ -4,7 +4,7 @@ pub fn sin(args: &[Value]) -> crate::Result<Value> {
     if let Some(value) = args.get(0).and_then(|v| v.as_number()) {
         Ok(Value::Float(value.sin()))
     } else {
-        Err(anyhow::anyhow!("sin(.into() requires a numeric argument"))
+        Err(crate::errors::synthesis_error(crate::errors::ErrorKind::TypeMismatch, "sin() requires a numeric argument"))
     }
 }
 
@@ -12,19 +12,19 @@ pub fn cos(args: &[Value]) -> crate::Result<Value> {
     if let Some(value) = args.get(0).and_then(|v| v.as_number()) {
         Ok(Value::Float(value.cos()))
     } else {
-        Err(anyhow::anyhow!("cos(.into() requires a numeric argument"))
+        Err(crate::errors::synthesis_error(crate::errors::ErrorKind::TypeMismatch, "cos() requires a numeric argument"))
     }
 }
 
 pub fn sqrt(args: &[Value]) -> crate::Result<Value> {
     if let Some(value) = args.get(0).and_then(|v| v.as_number()) {
         if value < 0.0 {
-            Err(anyhow::anyhow!("sqrt(.into() requires a non-negative argument"))
+            Err(crate::errors::synthesis_error(crate::errors::ErrorKind::InvalidExpression, "sqrt() requires a non-negative argument"))
         } else {
             Ok(Value::Float(value.sqrt()))
         }
     } else {
-        Err(anyhow::anyhow!("sqrt(.into() requires a numeric argument"))
+        Err(crate::errors::synthesis_error(crate::errors::ErrorKind::TypeMismatch, "sqrt() requires a numeric argument"))
     }
 }
 
@@ -32,21 +32,21 @@ pub fn abs(args: &[Value]) -> crate::Result<Value> {
     if let Some(value) = args.get(0).and_then(|v| v.as_number()) {
         Ok(Value::Float(value.abs()))
     } else {
-        Err(anyhow::anyhow!("abs(.into() requires a numeric argument"))
+        Err(crate::errors::synthesis_error(crate::errors::ErrorKind::TypeMismatch, "abs() requires a numeric argument"))
     }
 }
 
 pub fn min(args: &[Value]) -> crate::Result<Value> {
     if args.len() < 2 {
-        return Err(anyhow::anyhow!("min(.into() requires at least 2 arguments"));
+        return Err(crate::errors::synthesis_error(crate::errors::ErrorKind::InvalidExpression, "min() requires at least 2 arguments"));
     }
     
     let mut min_val = args[0].as_number()
-        .ok_or_else(|| anyhow::anyhow!("min(.into() requires numeric arguments"))?;
+        .ok_or_else(|| crate::errors::synthesis_error(crate::errors::ErrorKind::TypeMismatch, "min() requires numeric arguments"))?;
     
     for arg in &args[1..] {
         let val = arg.as_number()
-            .ok_or_else(|| anyhow::anyhow!("min(.into() requires numeric arguments"))?;
+            .ok_or_else(|| crate::errors::synthesis_error(crate::errors::ErrorKind::TypeMismatch, "min() requires numeric arguments"))?;
         if val < min_val {
             min_val = val;
         }
@@ -57,7 +57,7 @@ pub fn min(args: &[Value]) -> crate::Result<Value> {
 
 pub fn max(args: &[Value]) -> crate::Result<Value> {
     if args.len() < 2 {
-        return Err(anyhow::anyhow!("max(.into() requires at least 2 arguments"));
+        return Err(crate::errors::synthesis_error(crate::errors::ErrorKind::InvalidExpression, "max() requires at least 2 arguments"));
     }
     
     let mut max_val = args[0].as_number()

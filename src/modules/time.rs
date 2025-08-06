@@ -300,7 +300,7 @@ impl Sequencer {
             self.current_pattern = Some(name.to_string());
             Ok(())
         } else {
-            Err(anyhow::anyhow!("Pattern '{}' not found", name.into())
+            Err(crate::errors::synthesis_error(crate::errors::ErrorKind::UnknownFunction, format!("Pattern '{}' not found", name)))
         }
     }
     
@@ -521,10 +521,10 @@ pub fn animation_curve_create(_args: &[Value]) -> crate::Result<Value> {
 
 pub fn every(args: &[Value]) -> crate::Result<Value> {
     if args.is_empty() {
-        return Err(anyhow::anyhow!("every requires a duration argument".into());
+        return Err(crate::errors::synthesis_error(crate::errors::ErrorKind::InvalidExpression, "every requires a duration argument"));
     }
     
-    let duration = args[0].as_number().ok_or_else(|| anyhow::anyhow!("Duration must be a number".into())?;
+    let duration = args[0].as_number().ok_or_else(|| crate::errors::synthesis_error(crate::errors::ErrorKind::TypeMismatch, "Duration must be a number"))?;
     
     let mut result = HashMap::new();
     result.insert("type".to_string(), Value::String("temporal_every".to_string()));
@@ -534,10 +534,10 @@ pub fn every(args: &[Value]) -> crate::Result<Value> {
 
 pub fn after(args: &[Value]) -> crate::Result<Value> {
     if args.is_empty() {
-        return Err(anyhow::anyhow!("after requires a duration argument".into());
+        return Err(crate::errors::synthesis_error(crate::errors::ErrorKind::InvalidExpression, "after requires a duration argument"));
     }
     
-    let duration = args[0].as_number().ok_or_else(|| anyhow::anyhow!("Duration must be a number".into())?;
+    let duration = args[0].as_number().ok_or_else(|| crate::errors::synthesis_error(crate::errors::ErrorKind::TypeMismatch, "Duration must be a number"))?;
     
     let mut result = HashMap::new();
     result.insert("type".to_string(), Value::String("temporal_after".to_string()));

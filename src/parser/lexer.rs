@@ -26,16 +26,20 @@ pub enum Token {
     Struct,
     Enum,
     Let,
+    Mut,
     Return,
     Break,
     Continue,
     Main,
     As,
+    Content,
+    Style,
     
     // Identifiers and literals
     Identifier(String),
     Integer(i64),
     Float(f64),
+    Percentage(f64),
     String(String),
     InterpolatedString(Vec<crate::parser::ast::StringPart>),
     Boolean(bool),
@@ -115,6 +119,7 @@ fn token(input: &str) -> IResult<&str, Token> {
     alt((
         keyword,
         boolean,
+        percentage,
         float_with_unit,
         integer_with_unit,
         float,
@@ -145,11 +150,14 @@ fn keyword(input: &str) -> IResult<&str, Token> {
         map(tag("struct"), |_| Token::Struct),
         map(tag("enum"), |_| Token::Enum),
         map(tag("let"), |_| Token::Let),
+        map(tag("mut"), |_| Token::Mut),
         map(tag("return"), |_| Token::Return),
         map(tag("break"), |_| Token::Break),
         map(tag("continue"), |_| Token::Continue),
         map(tag("main"), |_| Token::Main),
         map(tag("as"), |_| Token::As),
+        map(tag("content"), |_| Token::Content),
+        map(tag("style"), |_| Token::Style),
     ))(input)
 }
 
@@ -175,6 +183,19 @@ fn float(input: &str) -> IResult<&str, Token> {
         )),
         |s: &str| Token::Float(s.parse().unwrap()),
     )(input)
+}
+
+fn percentage(input: &str) -> IResult<&str, Token> {
+    let (input, number) = alt((
+        recognize(pair(
+            many1(nom::character::complete::digit1),
+            pair(char('.'), many1(nom::character::complete::digit1)),
+        )),
+        recognize(many1(nom::character::complete::digit1)),
+    ))(input)?;
+    let (input, _) = char('%')(input)?;
+    let value: f64 = number.parse().unwrap();
+    Ok((input, Token::Percentage(value / 100.0))) // Convert to 0.0-1.0 range
 }
 
 fn string_literal(input: &str) -> IResult<&str, Token> {

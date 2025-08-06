@@ -65,7 +65,7 @@ impl WebcamManager {
         let mut capture = VideoCapture::new(device_index, CAP_ANY)?;
         
         if !capture.is_opened()? {
-            return Err(anyhow::anyhow!("Failed to open webcam device {}", device_index.into());
+            return Err(crate::errors::synthesis_error(crate::errors::ErrorKind::AudioDeviceError, format!("Failed to open webcam device {}", device_index)));
         }
         
         // Set capture properties
@@ -101,8 +101,8 @@ impl WebcamManager {
             return Ok(());
         }
         
-        self.frame_counter += 1;
-        if self.frame_counter % (self.frame_skip + 1) != 0 {
+        self._frame_counter += 1;
+        if self._frame_counter % (self.frame_skip + 1) != 0 {
             return Ok(()); // Skip this frame
         }
         

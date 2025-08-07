@@ -3,6 +3,7 @@ pub mod streams;
 pub mod types;
 pub mod units;
 pub mod realtime_buffer;
+pub mod realtime_optimizations;
 pub mod stream_composition;
 pub mod creative_api;
 pub mod creative_types;
@@ -15,6 +16,9 @@ mod realtime_buffer_test;
 
 #[cfg(test)]
 mod performance_test;
+
+#[cfg(test)]
+mod realtime_safety_tests;
 
 pub use interpreter::*;
 pub use streams::*;

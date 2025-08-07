@@ -77,9 +77,16 @@ fn create_new_project(args: &[String]) {
     println!("Creating new Synthesis project: {}", project_name);
     
     // Create project structure
-    fs::create_dir_all(project_dir.join("src")).expect("Failed to create src directory");
-    fs::create_dir_all(project_dir.join("examples")).expect("Failed to create examples directory");
-    fs::create_dir_all(project_dir.join("assets")).expect("Failed to create assets directory");
+    fs::create_dir_all(project_dir.join("src"))
+        .map_err(|_| anyhow::anyhow!("📁 Can't create 'src' directory for your project
+💡 Make sure you have permission to create files here
+💡 Try running in a different directory"))?;
+    fs::create_dir_all(project_dir.join("examples"))
+        .map_err(|_| anyhow::anyhow!("📁 Can't create 'examples' directory
+💡 Check folder permissions and try again"))?;
+    fs::create_dir_all(project_dir.join("assets"))
+        .map_err(|_| anyhow::anyhow!("🎨 Can't create 'assets' directory for your creative files
+💡 Check that you have permission to write files here"))?;
     
     // Create package.syn manifest
     let manifest = SynthesisManifest {
@@ -98,8 +105,12 @@ fn create_new_project(args: &[String]) {
         }),
     };
     
-    let manifest_toml = toml::to_string_pretty(&manifest).expect("Failed to serialize manifest");
-    fs::write(project_dir.join("package.syn"), manifest_toml).expect("Failed to write manifest");
+    let manifest_toml = toml::to_string_pretty(&manifest)
+        .map_err(|_| anyhow::anyhow!("📝 Can't create project configuration file
+💡 This is usually a temporary issue - try again"))?;
+    fs::write(project_dir.join("package.syn"), manifest_toml)
+        .map_err(|_| anyhow::anyhow!("📝 Can't save your project configuration
+💡 Make sure you have permission to write files in this directory"))?;
     
     // Create main.syn
     let main_content = r#"// Main Synthesis program

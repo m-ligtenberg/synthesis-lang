@@ -90,13 +90,28 @@ pub fn rect(args: &[Value]) -> crate::Result<Value> {
 
 pub fn circle(args: &[Value]) -> crate::Result<Value> {
     if args.len() < 3 {
-        return Err(anyhow::anyhow!("circle requires x, y, radius arguments").into());
+        return Err(crate::errors::synthesis_error(
+            crate::errors::ErrorKind::InvalidExpression,
+            "🎨 Graphics.circle() needs x, y, and radius values"
+        )
+        .with_suggestion("Try: Graphics.circle(50%, 50%, 20%)")
+        .with_suggestion("Specify center position (x, y) and radius size"));
     }
     
     let x = args[0].as_number()
-        .ok_or_else(|| anyhow::anyhow!("circle x must be a number").into())?;
+        .ok_or_else(|| crate::errors::synthesis_error(
+            crate::errors::ErrorKind::TypeMismatch,
+            "🎨 Graphics.circle() x position must be a number"
+        )
+        .with_suggestion("Try a percentage like 50% or a number like 100")
+        .with_suggestion("X position sets where the circle appears horizontally"))?;
     let y = args[1].as_number()
-        .ok_or_else(|| anyhow::anyhow!("circle y must be a number").into())?;
+        .ok_or_else(|| crate::errors::synthesis_error(
+            crate::errors::ErrorKind::TypeMismatch,
+            "🎨 Graphics.circle() y position must be a number"
+        )
+        .with_suggestion("Try a percentage like 25% or a number like 150")
+        .with_suggestion("Y position sets where the circle appears vertically"))?;
     let radius = args[2].as_number()
         .ok_or_else(|| crate::errors::synthesis_error(crate::errors::ErrorKind::TypeMismatch, "circle radius must be a number"))?;
     

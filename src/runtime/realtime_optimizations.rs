@@ -5,6 +5,15 @@ use crate::runtime::streams::*;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use std::sync::OnceLock;
+
+// Global buffer pool for real-time audio processing
+static GLOBAL_BUFFER_POOL: OnceLock<BufferPool> = OnceLock::new();
+
+/// Get the global buffer pool instance (thread-safe singleton)
+pub fn global_buffer_pool() -> &'static BufferPool {
+    GLOBAL_BUFFER_POOL.get_or_init(|| BufferPool::new())
+}
 
 /// Lock-free optimization strategies for real-time processing
 #[derive(Debug)]
@@ -192,7 +201,7 @@ impl RealtimeOptimizer {
 }
 
 impl BufferPool {
-    fn new() -> Self {
+    pub fn new() -> Self {
         let small_buffers = crossbeam::queue::SegQueue::new();
         let medium_buffers = crossbeam::queue::SegQueue::new();
         let large_buffers = crossbeam::queue::SegQueue::new();
@@ -214,7 +223,7 @@ impl BufferPool {
         }
     }
     
-    fn get_small_buffer(&self) -> Vec<f32> {
+    pub fn get_small_buffer(&self) -> Vec<f32> {
         if let Some(buffer) = self.small_buffers.pop() {
             buffer
         } else {
@@ -224,7 +233,7 @@ impl BufferPool {
         }
     }
     
-    fn return_small_buffer(&self, mut buffer: Vec<f32>) {
+    pub fn return_small_buffer(&self, mut buffer: Vec<f32>) {
         // Clear and return to pool
         buffer.fill(0.0);
         if buffer.len() == 64 {
@@ -233,7 +242,7 @@ impl BufferPool {
         // Drop oversized buffers to prevent memory bloat
     }
     
-    fn get_medium_buffer(&self) -> Vec<f32> {
+    pub fn get_medium_buffer(&self) -> Vec<f32> {
         if let Some(buffer) = self.medium_buffers.pop() {
             buffer
         } else {
@@ -242,11 +251,57 @@ impl BufferPool {
         }
     }
     
-    fn return_medium_buffer(&self, mut buffer: Vec<f32>) {
+    pub fn return_medium_buffer(&self, mut buffer: Vec<f32>) {
         buffer.fill(0.0);
         if buffer.len() == 512 {
             self.medium_buffers.push(buffer);
         }
+    }
+    
+    pub fn get_large_buffer(&self) -> Vec<f32> {
+        if let Some(buffer) = self.large_buffers.pop() {
+            buffer
+        } else {
+            self.large_allocated.fetch_add(1, Ordering::Relaxed);
+            vec![0.0; 2048]
+        }
+    }
+    
+    pub fn return_large_buffer(&self, mut buffer: Vec<f32>) {
+        buffer.fill(0.0);
+        if buffer.len() == 2048 {
+            self.large_buffers.push(buffer);
+        }
+    }
+    
+    /// Get a buffer of appropriate size for the given count
+    pub fn get_buffer(&self, count: usize) -> Vec<f32> {
+        if count <= 64 {
+            let mut buffer = self.get_small_buffer();
+            buffer.resize(count, 0.0);
+            buffer
+        } else if count <= 512 {
+            let mut buffer = self.get_medium_buffer();
+            buffer.resize(count, 0.0);
+            buffer
+        } else {
+            let mut buffer = self.get_large_buffer();
+            buffer.resize(count, 0.0);
+            buffer
+        }
+    }
+    
+    /// Return a buffer to the appropriate pool
+    pub fn return_buffer(&self, buffer: Vec<f32>) {
+        let original_capacity = buffer.capacity();
+        if original_capacity == 64 {
+            self.return_small_buffer(buffer);
+        } else if original_capacity == 512 {
+            self.return_medium_buffer(buffer);
+        } else if original_capacity == 2048 {
+            self.return_large_buffer(buffer);
+        }
+        // Drop buffers that don't match our pool sizes
     }
 }
 

@@ -2,7 +2,7 @@ use nom::{
     branch::alt,
     bytes::complete::{tag, take_while, take_while1},
     character::complete::{alpha1, alphanumeric1, char, multispace0},
-    combinator::{map, recognize},
+    combinator::{map, map_res, recognize},
     multi::{many0, many1},
     sequence::{delimited, pair, preceded},
     IResult,
@@ -169,19 +169,27 @@ fn boolean(input: &str) -> IResult<&str, Token> {
 }
 
 fn integer(input: &str) -> IResult<&str, Token> {
-    map(
+    map_res(
         recognize(many1(nom::character::complete::digit1)),
-        |s: &str| Token::Integer(s.parse().unwrap()),
+        |s: &str| {
+            s.parse::<i64>()
+                .map(Token::Integer)
+                .map_err(|_| nom::error::ErrorKind::Digit)
+        },
     )(input)
 }
 
 fn float(input: &str) -> IResult<&str, Token> {
-    map(
+    map_res(
         recognize(pair(
             many1(nom::character::complete::digit1),
             pair(char('.'), many1(nom::character::complete::digit1)),
         )),
-        |s: &str| Token::Float(s.parse().unwrap()),
+        |s: &str| {
+            s.parse::<f64>()
+                .map(Token::Float)
+                .map_err(|_| nom::error::ErrorKind::Float)
+        },
     )(input)
 }
 
@@ -194,7 +202,8 @@ fn percentage(input: &str) -> IResult<&str, Token> {
         recognize(many1(nom::character::complete::digit1)),
     ))(input)?;
     let (input, _) = char('%')(input)?;
-    let value: f64 = number.parse().unwrap();
+    let value: f64 = number.parse()
+        .map_err(|_| nom::Err::Error(nom::error::Error::new(input, nom::error::ErrorKind::Float)))?;
     Ok((input, Token::Percentage(value / 100.0))) // Convert to 0.0-1.0 range
 }
 

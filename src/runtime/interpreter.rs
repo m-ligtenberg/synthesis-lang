@@ -2,6 +2,14 @@ use crate::parser::ast::*;
 use crate::runtime::{StreamManager, Value};
 use std::collections::HashMap;
 
+#[derive(Debug, Clone)]
+pub enum ControlFlow {
+    None,
+    Break,
+    Continue,
+    Return(Value),
+}
+
 pub struct Interpreter {
     pub variables: HashMap<String, Value>,
     pub stream_manager: StreamManager,
@@ -41,8 +49,24 @@ impl Interpreter {
                 }
                 Item::Loop(loop_block) => {
                     loop {
+                        let mut should_break = false;
                         for stmt in &loop_block.body {
-                            self.execute_statement(stmt)?;
+                            match self.execute_statement_with_control(stmt)? {
+                                ControlFlow::Break => {
+                                    should_break = true;
+                                    break;
+                                }
+                                ControlFlow::Continue => {
+                                    break; // break inner loop to continue outer loop
+                                }
+                                ControlFlow::Return(val) => {
+                                    return Err(anyhow::anyhow!("Return from loop not yet supported: {:?}", val).into());
+                                }
+                                ControlFlow::None => {}
+                            }
+                        }
+                        if should_break {
+                            break;
                         }
                     }
                 }
@@ -65,6 +89,25 @@ impl Interpreter {
     
     fn execute_import(&mut self, _import: &ImportItem) -> crate::Result<()> {
         Ok(())
+    }
+    
+    fn execute_statement_with_control(&mut self, stmt: &Statement) -> crate::Result<ControlFlow> {
+        match stmt {
+            Statement::Break => Ok(ControlFlow::Break),
+            Statement::Continue => Ok(ControlFlow::Continue),
+            Statement::Return(expr) => {
+                let value = if let Some(e) = expr {
+                    self.evaluate_expression(e)?
+                } else {
+                    Value::Null
+                };
+                Ok(ControlFlow::Return(value))
+            }
+            _ => {
+                self.execute_statement(stmt)?;
+                Ok(ControlFlow::None)
+            }
+        }
     }
     
     fn execute_statement(&mut self, stmt: &Statement) -> crate::Result<Value> {
@@ -143,20 +186,9 @@ impl Interpreter {
                 self.variables.insert(name.clone(), val.clone());
                 Ok(val)
             }
-            Statement::Return(expr) => {
-                // TODO: Implement proper return handling with control flow
-                if let Some(e) = expr {
-                    self.evaluate_expression(e)
-                } else {
-                    Ok(Value::Null)
-                }
-            }
-            Statement::Break => {
-                // TODO: Implement proper break handling with control flow
-                Ok(Value::Null)
-            }
-            Statement::Continue => {
-                // TODO: Implement proper continue handling with control flow
+            Statement::Return(_) | Statement::Break | Statement::Continue => {
+                // These are now handled by execute_statement_with_control
+                // In non-control contexts, they just return null  
                 Ok(Value::Null)
             }
         }
@@ -213,10 +245,20 @@ impl Interpreter {
                         if idx < arr.len() {
                             Ok(arr[idx].clone())
                         } else {
-                            Err(anyhow::anyhow!("Array index {} out of bounds (length {})", idx, arr.len()).into())
+                            Err(crate::SynthesisError::new(
+                                crate::ErrorKind::InvalidExpression,
+                                &format!("🗺️ List index {} is out of range (list has {} items)", idx, arr.len())
+                            )
+                            .with_suggestion(&format!("Try an index between 0 and {} (lists start at 0)", arr.len().saturating_sub(1)))
+                            .with_suggestion("Check your list size with list.length() first"))
                         }
                     }
-                    _ => Err(anyhow::anyhow!("Cannot index {:?} with {:?}", array_val.type_name(), index_val.type_name()).into())
+                    _ => Err(crate::SynthesisError::new(
+                        crate::ErrorKind::TypeMismatch,
+                        "🗺️ Can't use list indexing here"
+                    )
+                    .with_suggestion("List indexing works like: myList[0], myList[1], etc.")
+                    .with_suggestion("Make sure you have a list and a number index"))
                 }
             }
             Expression::Pipe { left, right } => {
@@ -249,7 +291,12 @@ impl Interpreter {
                         
                         Ok(left_val)
                     }
-                    _ => Err(anyhow::anyhow!("Bidirectional pipe requires two streams").into())
+                    _ => Err(crate::SynthesisError::new(
+                        crate::ErrorKind::TypeMismatch,
+                        "🎵 Bidirectional connection needs two audio/visual streams"
+                    )
+                    .with_suggestion("Try: audioStream <> visualStream")
+                    .with_suggestion("Both sides must be streams (audio, graphics, or data)"))
                 }
             }
             Expression::StreamBranch { stream, count } => {
@@ -267,7 +314,12 @@ impl Interpreter {
                         
                         Ok(Value::Stream(stream))
                     }
-                    _ => Err(anyhow::anyhow!("Cannot branch non-stream value").into())
+                    _ => Err(crate::SynthesisError::new(
+                        crate::ErrorKind::TypeMismatch,
+                        "🌊 Stream branching only works with audio/visual streams"
+                    )
+                    .with_suggestion("Try branching audio or graphics streams")
+                    .with_suggestion("Use: audioStream -> [effect1, effect2, effect3]"))
                 }
             }
             Expression::StreamMerge { streams, output_name } => {
@@ -403,10 +455,20 @@ impl Interpreter {
                     return (function.callback)(&arg_values);
                 }
             }
-            return Err(anyhow::anyhow!("Function {}.{} not found", module_name, name).into());
+            return Err(crate::SynthesisError::new(
+                crate::ErrorKind::UnknownFunction,
+                &format!("🎹 {}.{}() function doesn't exist", module_name, name)
+            )
+            .with_suggestion(&format!("Check available functions in {} module", module_name))
+            .with_suggestion("Try using autocomplete or check the documentation"));
         }
         
-        Err(anyhow::anyhow!("Function {} not found", name).into())
+        Err(crate::SynthesisError::new(
+            crate::ErrorKind::UnknownFunction,
+            &format!("🎹 {}() function doesn't exist", name)
+        )
+        .with_suggestion("Check if you need a module prefix like Math.{} or Audio.{}")
+        .with_suggestion("Try using autocomplete or check the documentation"))
     }
     
     fn evaluate_binary_op(

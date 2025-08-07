@@ -1,5 +1,14 @@
 use crate::runtime::{Value, types::{Stream, DataType}};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::sync::atomic::{AtomicU64, Ordering};
+
+// Real-time safe frame counter (no system calls)
+static FRAME_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+// Real-time safe time calculation (assuming 44.1kHz sample rate)
+fn get_normalized_time() -> f64 {
+    let frames = FRAME_COUNTER.fetch_add(1024, Ordering::Relaxed); // Increment by typical buffer size
+    frames as f64 / 44100.0 // Convert to seconds
+}
 
 pub fn mic_input(_args: &[Value]) -> crate::Result<Value> {
     // Return a mock audio stream
@@ -23,11 +32,8 @@ pub fn analyze_fft(args: &[Value]) -> crate::Result<Value> {
         return Err(crate::errors::synthesis_error(crate::errors::ErrorKind::InvalidExpression, "FFT bands must be between 1 and 1024"));
     }
     
-    // Generate mock FFT data with some variation over time
-    let time_factor = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_secs_f64();
+    // Generate mock FFT data with some variation over time (real-time safe)
+    let time_factor = get_normalized_time();
     
     let fft_data: Vec<Value> = (0..bands)
         .map(|i| {
@@ -45,11 +51,8 @@ pub fn beat_detect(args: &[Value]) -> crate::Result<Value> {
         return Err(crate::errors::synthesis_error(crate::errors::ErrorKind::InvalidExpression, "beat_detect requires an audio stream argument"));
     }
     
-    // Simple mock beat detection based on time
-    let time_factor = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_secs_f64();
+    // Simple mock beat detection based on time (real-time safe)
+    let time_factor = get_normalized_time();
     
     // Simulate beats at ~120 BPM (every 0.5 seconds)
     let beat_phase = (time_factor * 2.0) % 1.0;
@@ -80,7 +83,7 @@ pub fn load_file(args: &[Value]) -> crate::Result<Value> {
 
 pub fn play(args: &[Value]) -> crate::Result<Value> {
     if args.is_empty() {
-        return Err(anyhow::anyhow!("play requires an audio stream argument").into());
+        return Err(crate::errors::synthesis_error(\n            crate::errors::ErrorKind::InvalidExpression,\n            \"🎵 Audio.play() needs an audio stream to play\"\n        )\n        .with_suggestion(\"Try: Audio.play(Audio.mic_input())\")\n        .with_suggestion(\"Connect an audio source like a microphone or file\"));
     }
     
     match &args[0] {
@@ -88,7 +91,7 @@ pub fn play(args: &[Value]) -> crate::Result<Value> {
             println!("Playing audio stream: {}", stream.name);
             Ok(Value::Boolean(true))
         }
-        _ => Err(anyhow::anyhow!("play requires an audio stream").into()),
+        _ => Err(crate::errors::synthesis_error(\n            crate::errors::ErrorKind::TypeMismatch,\n            \"🎵 Audio.play() expected an audio stream, not this type\"\n        )\n        .with_suggestion(\"Use Audio.mic_input(), Audio.load_file(), or another audio source\")\n        .with_suggestion(\"Make sure you're passing audio data, not text or numbers\")),
     }
 }
 

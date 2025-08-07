@@ -1,12 +1,11 @@
 use crate::audio::{effects::*, analysis::*};
-use std::collections::VecDeque;
-//use std::sync::{Arc, Mutex};
+use crate::runtime::realtime_buffer::{RealtimeCircularBuffer, BufferError};
 
 pub struct AudioProcessor {
     _sample_rate: f32,
     buffer_size: usize,
-    input_buffer: VecDeque<f32>,
-    output_buffer: VecDeque<f32>,
+    input_buffer: RealtimeCircularBuffer,
+    output_buffer: RealtimeCircularBuffer,
     effects_chain: Vec<Box<dyn AudioEffect + Send>>,
     fft_analyzer: FFTAnalyzer,
     beat_detector: BeatDetector,
@@ -20,11 +19,13 @@ pub trait AudioEffect: Send {
 
 impl AudioProcessor {
     pub fn new(sample_rate: f32, buffer_size: usize) -> Self {
+        let buffer_capacity = (buffer_size * 4).next_power_of_two();
+        
         Self {
             _sample_rate: sample_rate,
             buffer_size,
-            input_buffer: VecDeque::with_capacity(buffer_size * 4),
-            output_buffer: VecDeque::with_capacity(buffer_size * 4),
+            input_buffer: RealtimeCircularBuffer::new(buffer_capacity).unwrap(),
+            output_buffer: RealtimeCircularBuffer::new(buffer_capacity).unwrap(),
             effects_chain: Vec::new(),
             fft_analyzer: FFTAnalyzer::new(1024),
             beat_detector: BeatDetector::new(44),
@@ -37,29 +38,37 @@ impl AudioProcessor {
     }
     
     pub fn process_buffer(&mut self, input: &[f32]) -> Vec<f32> {
-        // Add input to buffer
-        for &sample in input {
-            self.input_buffer.push_back(sample);
-        }
-        
+        // Pre-allocate output vector to exact size (no dynamic growth)
         let mut output = Vec::with_capacity(input.len());
+        output.resize(input.len(), 0.0);
         
-        // Process samples through effects chain
-        while let Some(sample) = self.input_buffer.pop_front() {
-            let mut processed_sample = sample;
-            
-            // Apply effects chain
-            for effect in &mut self.effects_chain {
-                processed_sample = effect.process(processed_sample);
-            }
-            
-            output.push(processed_sample);
-            self.output_buffer.push_back(processed_sample);
+        // Write input to circular buffer (real-time safe)
+        for &sample in input {
+            // Silently drop samples if buffer full (prevents blocking)
+            let _ = self.input_buffer.write_single(sample);
         }
         
-        // Maintain buffer size limits
-        while self.output_buffer.len() > self.buffer_size * 2 {
-            self.output_buffer.pop_front();
+        // Process available samples (bounded by input length)
+        for i in 0..input.len() {
+            match self.input_buffer.read_single() {
+                Ok(mut sample) => {
+                    // Apply effects chain
+                    for effect in &mut self.effects_chain {
+                        sample = effect.process(sample);
+                    }
+                    
+                    output[i] = sample;
+                    // Store processed sample (silently drop if buffer full)
+                    let _ = self.output_buffer.write_single(sample);
+                }
+                Err(BufferError::BufferEmpty) => {
+                    // Output silence if no input available
+                    output[i] = 0.0;
+                }
+                Err(_) => {
+                    output[i] = 0.0;
+                }
+            }
         }
         
         output
@@ -107,18 +116,22 @@ impl AudioProcessor {
     }
     
     pub fn get_recent_samples(&self, count: usize) -> Vec<f32> {
-        self.output_buffer
-            .iter()
-            .rev()
-            .take(count)
-            .copied()
-            .collect::<Vec<_>>()
-            .into_iter()
-            .rev()
-            .collect()
+        let mut result = Vec::with_capacity(count);
+        
+        // Read most recent samples (may be fewer than requested)
+        for _ in 0..count {
+            match self.output_buffer.read_single() {
+                Ok(sample) => result.push(sample),
+                Err(BufferError::BufferEmpty) => result.push(0.0),
+                Err(_) => result.push(0.0),
+            }
+        }
+        
+        result
     }
     
     pub fn clear_buffers(&mut self) {
+        // Circular buffers clear by resetting read/write pointers
         self.input_buffer.clear();
         self.output_buffer.clear();
     }

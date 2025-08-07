@@ -1,9 +1,10 @@
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use crate::runtime::realtime_buffer::{RealtimeCircularBuffer, BufferError};
 
 pub struct AudioInput {
     stream: Option<cpal::Stream>,
-    buffer: Arc<Mutex<Vec<f32>>>,
+    buffer: Arc<RealtimeCircularBuffer>,
     config: cpal::StreamConfig,
 }
 
@@ -17,7 +18,8 @@ impl AudioInput {
         let config = device.default_input_config()?;
         let config = config.into();
         
-        let buffer = Arc::new(Mutex::new(Vec::new()));
+        let buffer = Arc::new(RealtimeCircularBuffer::new(8192)
+            .map_err(|_| crate::errors::synthesis_error(crate::errors::ErrorKind::AudioDeviceError, "Failed to create audio buffer"))?);
 
         Ok(Self {
             stream: None,
@@ -37,12 +39,10 @@ impl AudioInput {
         let stream = device.build_input_stream(
             &self.config,
             move |data: &[f32], _: &cpal::InputCallbackInfo| {
-                let mut buffer = buffer.lock().unwrap();
-                buffer.extend_from_slice(data);
-                
-                if buffer.len() > 44100 {
-                    let excess = buffer.len() - 44100;
-                    buffer.drain(0..excess);
+                // Real-time safe: no locks, no allocations, bounded time
+                for &sample in data {
+                    // Silently drop samples if buffer is full (prevents blocking)
+                    let _ = buffer.write_single(sample);
                 }
             },
             |err| {
@@ -57,17 +57,18 @@ impl AudioInput {
     }
 
     pub fn get_samples(&self, count: usize) -> Vec<f32> {
-        let buffer = self.buffer.lock().unwrap();
-        if buffer.len() >= count {
-            buffer[buffer.len() - count..].to_vec()
-        } else {
-            let mut result = vec![0.0; count];
-            let available = buffer.len();
-            if available > 0 {
-                result[count - available..].copy_from_slice(&buffer);
+        let mut result = Vec::with_capacity(count);
+        
+        // Read available samples (non-blocking)
+        for _ in 0..count {
+            match self.buffer.read_single() {
+                Ok(sample) => result.push(sample),
+                Err(BufferError::BufferEmpty) => result.push(0.0), // Silence for missing samples
+                Err(_) => result.push(0.0),
             }
-            result
         }
+        
+        result
     }
 
     pub fn stop_capture(&mut self) {

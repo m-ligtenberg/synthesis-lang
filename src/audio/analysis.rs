@@ -105,8 +105,10 @@ impl FFTAnalyzer {
 }
 
 pub struct BeatDetector {
-    energy_buffer: Vec<f32>,
+    energy_buffer: Vec<f32>,  // Pre-allocated fixed-size buffer
+    buffer_index: usize,      // Circular index
     buffer_size: usize,
+    buffer_filled: bool,      // Track if we've filled the buffer once
     threshold_multiplier: f32,
     last_beat_time: std::time::Instant,
     min_beat_interval: std::time::Duration,
@@ -115,8 +117,10 @@ pub struct BeatDetector {
 impl BeatDetector {
     pub fn new(buffer_size: usize) -> Self {
         Self {
-            energy_buffer: Vec::with_capacity(buffer_size),
+            energy_buffer: vec![0.0; buffer_size],  // Pre-allocate with zeros
+            buffer_index: 0,
             buffer_size,
+            buffer_filled: false,
             threshold_multiplier: 1.3,
             last_beat_time: std::time::Instant::now(),
             min_beat_interval: std::time::Duration::from_millis(300),
@@ -126,15 +130,21 @@ impl BeatDetector {
     pub fn detect_beat(&mut self, samples: &[f32]) -> bool {
         let energy = self.calculate_energy(samples);
         
-        self.energy_buffer.push(energy);
-        if self.energy_buffer.len() > self.buffer_size {
-            self.energy_buffer.remove(0);
+        // Real-time safe circular buffer update (no allocations, O(1) time)
+        self.energy_buffer[self.buffer_index] = energy;
+        self.buffer_index = (self.buffer_index + 1) % self.buffer_size;
+        
+        // Mark buffer as filled after first complete cycle
+        if self.buffer_index == 0 {
+            self.buffer_filled = true;
         }
 
-        if self.energy_buffer.len() < self.buffer_size {
+        // Only detect beats after buffer is filled
+        if !self.buffer_filled {
             return false;
         }
 
+        // Calculate average (O(n) but bounded and predictable)
         let average_energy = self.energy_buffer.iter().sum::<f32>() / self.buffer_size as f32;
         let threshold = average_energy * self.threshold_multiplier;
 

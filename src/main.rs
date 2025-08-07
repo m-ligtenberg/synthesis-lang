@@ -43,8 +43,9 @@ fn main() -> synthesis::Result<()> {
     
     let source_code = match fs::read_to_string(filename) {
         Ok(content) => content,
-        Err(e) => {
-            eprintln!("Error reading file '{}': {}", filename, e);
+        Err(_) => {
+            eprintln!("🎵 Can't find your creative file: {}", filename);
+            eprintln!("💡 Make sure the file exists and you have permission to read it");
             return Ok(());
         }
     };
@@ -52,7 +53,13 @@ fn main() -> synthesis::Result<()> {
     println!("Parsing {}...", filename);
     
     let (_, tokens) = lexer::tokenize(&source_code)
-        .map_err(|e| anyhow::anyhow!("Lexer error: {:?}", e.into())?;
+        .map_err(|_| synthesis::errors::synthesis_error(
+            synthesis::errors::ErrorKind::SyntaxError,
+            "🎵 Oops! There's something unusual in your creative code"
+        )
+        .with_suggestion("Check for typos, missing quotes, or unusual characters")
+        .with_suggestion("Try running with --verbose for more details")
+        .with_docs("https://synthesis-lang.org/docs/syntax-basics"))?;
     
     let mut parser = Parser::new(&tokens);
     let program = parser.parse()?;

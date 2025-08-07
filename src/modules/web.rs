@@ -7,6 +7,11 @@ pub fn export_webapp(args: &[Value]) -> crate::Result<Value> {
         println!("Exporting webapp: {}", name);
         Ok(Value::Boolean(true))
     } else {
-        Err(anyhow::anyhow!("export_webapp(.into() requires a name as first argument"))
+        Err(crate::errors::synthesis_error(
+            crate::errors::ErrorKind::TypeMismatch,
+            "🌐 Web.export_webapp() needs a name for your creative app"
+        )
+        .with_suggestion("Try: Web.export_webapp(\"MyAudioVisualizer\")")
+        .with_suggestion("Use a text name to identify your web app"))
     }
 }
